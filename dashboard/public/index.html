@@ -100,6 +100,9 @@ function App() {
   const [cards, setCards] = useState([]);
   const [cardsErr, setCardsErr] = useState("");
   const [history, setHistory] = useState([]);
+  const [jiraMeta, setJiraMeta] = useState({ issueTypes: [], epics: [], loaded: false, err: "" });
+  const [newCard, setNewCard] = useState({ issueType: "", summary: "", description: "", epicKey: "", parentInput: "", addTriggerLabel: true, assignSelf: true });
+  const [creating, setCreating] = useState(false);
   const [toast, setToast] = useState("");
   const [envFile, setEnvFile] = useState({ path: "", content: "", mtime: null, exists: false, loaded: false });
 
@@ -113,7 +116,7 @@ function App() {
     setStatus(await api.get("/api/loops/status"));
   }, []);
 
-  useEffect(() => { loadAll(); loadHistory(); }, [loadAll]);
+  useEffect(() => { loadAll(); loadHistory(); loadMeta(); }, [loadAll]);
 
   // 폴링: 상태 + 로그 + 이력
   useEffect(() => {
@@ -149,6 +152,30 @@ function App() {
   const loadHistory = async () => {
     const r = await api.get("/api/history?limit=100");
     if (r.ok) setHistory(r.entries || []);
+  };
+  const loadMeta = async () => {
+    const r = await api.get("/api/jira/meta");
+    if (r.ok) {
+      setJiraMeta({ issueTypes: r.issueTypes || [], epics: r.epics || [], loaded: true, err: "" });
+      setNewCard((p) => p.issueType ? p : { ...p, issueType: (r.issueTypes.find((t) => t.name === "Task") || r.issueTypes[0] || {}).name || "" });
+    } else {
+      setJiraMeta({ issueTypes: [], epics: [], loaded: true, err: r.message || "메타 조회 실패" });
+    }
+  };
+  const createCard = async () => {
+    if (!newCard.summary.trim()) { flash("요약을 입력하세요"); return; }
+    setCreating(true);
+    const parentKey = newCard.parentInput.trim() || newCard.epicKey;
+    const r = await api.post("/api/jira/issue", {
+      summary: newCard.summary, description: newCard.description, issueType: newCard.issueType,
+      parentKey, addTriggerLabel: newCard.addTriggerLabel, assignSelf: newCard.assignSelf,
+    });
+    setCreating(false);
+    if (r.ok) {
+      flash(`카드 생성됨: ${r.key}`);
+      setNewCard((p) => ({ ...p, summary: "", description: "", parentInput: "" }));
+      loadCards(); loadMeta();
+    } else { flash(r.message || "생성 실패"); }
   };
   const loadEnv = async () => {
     const r = await api.get("/api/env");
@@ -265,6 +292,51 @@ function App() {
           className="w-full h-72 bg-black/60 border border-slate-700 rounded-lg p-3 text-xs font-mono disabled:opacity-50 focus:outline-none focus:border-indigo-400"
         />
         <p className="text-xs text-amber-300/80 mt-2">⚠ 시크릿 파일입니다. 저장 시 기존 파일은 .bak 으로 백업되며, 대상 repo로 복사될 때 커밋되지 않도록 .gitignore 에 포함되어야 합니다.</p>
+      </Section>
+
+      {/* Jira 카드 등록 */}
+      <Section title="Jira 카드 등록" right={<Btn color="slate" onClick={loadMeta}>메타 새로고침</Btn>}>
+        {jiraMeta.err && <p className="text-rose-400 text-sm mb-2">{jiraMeta.err}</p>}
+        {!config.projectKey && <p className="text-amber-300/80 text-sm mb-2">프로젝트 키를 먼저 설정·저장하세요.</p>}
+        <div className="grid grid-cols-2 gap-x-5">
+          <label className="block mb-3">
+            <span className="text-sm text-slate-400">이슈 타입</span>
+            <select value={newCard.issueType} onChange={(e) => setNewCard({ ...newCard, issueType: e.target.value })}
+              className="mt-1 w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400">
+              {jiraMeta.issueTypes.length === 0 && <option value="">(메타 불러오는 중…)</option>}
+              {jiraMeta.issueTypes.map((t) => <option key={t.id} value={t.name}>{t.name}{t.subtask ? " (하위)" : ""}</option>)}
+            </select>
+          </label>
+          <Field label="요약 (필수)" value={newCard.summary} onChange={(v) => setNewCard({ ...newCard, summary: v })} placeholder="카드 제목" />
+          <label className="block mb-3">
+            <span className="text-sm text-slate-400">상위 에픽 (드롭다운)</span>
+            <select value={newCard.epicKey} onChange={(e) => setNewCard({ ...newCard, epicKey: e.target.value })}
+              className="mt-1 w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400">
+              <option value="">(상위 없음)</option>
+              {jiraMeta.epics.map((ep) => <option key={ep.key} value={ep.key}>{ep.key} · {ep.summary}</option>)}
+            </select>
+          </label>
+          <Field label="또는 상위 키 직접 입력 (우선 적용)" value={newCard.parentInput} onChange={(v) => setNewCard({ ...newCard, parentInput: v })} placeholder="예: EKYB-123 (에픽/부모 카드)"
+            info="입력하면 위 드롭다운보다 우선합니다. 에픽 또는 부모 이슈의 키를 넣으세요. 하위(subtask) 타입은 부모 카드 키가 필요합니다." />
+        </div>
+        <label className="block mb-3">
+          <span className="text-sm text-slate-400">설명</span>
+          <textarea value={newCard.description} onChange={(e) => setNewCard({ ...newCard, description: e.target.value })}
+            spellCheck={false} placeholder="작업 내용/스펙"
+            className="mt-1 w-full h-28 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
+        </label>
+        <div className="flex items-center gap-5 mb-3 text-sm text-slate-300">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={newCard.addTriggerLabel} onChange={(e) => setNewCard({ ...newCard, addTriggerLabel: e.target.checked })} />
+            <span>{config.triggerLabel || "claude-work"} 라벨 추가 (자동화 대상)</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={newCard.assignSelf} onChange={(e) => setNewCard({ ...newCard, assignSelf: e.target.checked })} />
+            <span>나에게 할당 (루프 탐지 조건)</span>
+          </label>
+        </div>
+        <Btn color="green" onClick={createCard} disabled={creating || !config.projectKey}>{creating ? "생성 중…" : "카드 생성"}</Btn>
+        <p className="text-xs text-slate-500 mt-2">자동화로 처리하려면 라벨 추가 + 나에게 할당을 켜두세요. (둘 다 충족해야 plan 루프가 탐지)</p>
       </Section>
 
       {/* 카드 상태 */}

@@ -206,6 +206,33 @@ async function jiraSearch(jql) {
   return res.json();
 }
 
+// 범용 Jira REST 요청(인증 + 에러 처리). jiraSearch 와 동일 자격증명 사용.
+async function jiraReq(method, urlPath, body) {
+  const cfg = getConfig();
+  const cred = getCreds();
+  if (!cred.atlassianEmail || !cred.atlassianToken) throw new Error("Atlassian 이메일/토큰이 설정되지 않았습니다.");
+  if (!cfg.jiraSite) throw new Error("Jira 사이트가 설정되지 않았습니다.");
+  const auth = Buffer.from(`${cred.atlassianEmail}:${cred.atlassianToken}`).toString("base64");
+  const res = await fetch(`https://${cfg.jiraSite}${urlPath}`, {
+    method,
+    headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/json", Accept: "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const txt = await res.text();
+  if (!res.ok) throw new Error(`Jira ${res.status}: ${txt.slice(0, 400)}`);
+  return txt ? JSON.parse(txt) : {};
+}
+
+// 평문 설명 → Atlassian Document Format(ADF) 변환(REST v3 description 필드용)
+function toADF(text) {
+  const lines = String(text).split("\n");
+  return {
+    type: "doc",
+    version: 1,
+    content: lines.map((ln) => ({ type: "paragraph", content: ln ? [{ type: "text", text: ln }] : [] })),
+  };
+}
+
 // 트리거 판정 절(label 모드 권장, text 모드는 레거시)
 function triggerClause(cfg) {
   return cfg.triggerMode === "text"
@@ -324,6 +351,52 @@ app.get("/api/cards", async (req, res) => {
       return "plan-ready";
     };
     res.json({ ok: true, issues: issues.map((it) => ({ ...it, stage: classify(it) })) });
+  } catch (e) {
+    res.status(500).json({ ok: false, message: String(e.message || e) });
+  }
+});
+
+// ----- 카드 등록: 메타(이슈 타입 + 에픽 목록) -----
+app.get("/api/jira/meta", async (req, res) => {
+  try {
+    const cfg = getConfig();
+    if (!cfg.projectKey) throw new Error("프로젝트 키가 설정되지 않았습니다.");
+    const proj = await jiraReq("GET", `/rest/api/3/project/${encodeURIComponent(cfg.projectKey)}`);
+    const issueTypes = (proj.issueTypes || []).map((t) => ({ id: t.id, name: t.name, subtask: !!t.subtask }));
+    let epics = [];
+    try {
+      const data = await jiraSearch(`project = "${cfg.projectKey}" AND issuetype = Epic ORDER BY created DESC`);
+      epics = (data.issues || []).map((i) => ({ key: i.key, summary: i.fields.summary }));
+    } catch { /* 에픽 없음/권한 등은 무시 */ }
+    res.json({ ok: true, projectKey: cfg.projectKey, issueTypes, epics });
+  } catch (e) {
+    res.status(500).json({ ok: false, message: String(e.message || e) });
+  }
+});
+
+// ----- 카드 등록: 생성 -----
+app.post("/api/jira/issue", async (req, res) => {
+  try {
+    const cfg = getConfig();
+    if (!cfg.projectKey) throw new Error("프로젝트 키가 설정되지 않았습니다.");
+    const b = req.body || {};
+    const summary = String(b.summary || "").trim();
+    if (!summary) throw new Error("요약(summary)은 필수입니다.");
+    const fields = {
+      project: { key: cfg.projectKey },
+      issuetype: { name: b.issueType || "Task" },
+      summary,
+    };
+    if (b.description) fields.description = toADF(b.description);
+    const parentKey = String(b.parentKey || "").trim();
+    if (parentKey) fields.parent = { key: parentKey };
+    if (b.addTriggerLabel) fields.labels = [cfg.triggerLabel || "claude-work"];
+    if (b.assignSelf) {
+      const me = await jiraReq("GET", "/rest/api/3/myself");
+      if (me.accountId) fields.assignee = { accountId: me.accountId };
+    }
+    const created = await jiraReq("POST", "/rest/api/3/issue", { fields });
+    res.json({ ok: true, key: created.key, url: `https://${cfg.jiraSite}/browse/${created.key}` });
   } catch (e) {
     res.status(500).json({ ok: false, message: String(e.message || e) });
   }
