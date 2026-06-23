@@ -371,7 +371,7 @@ function App() {
       </Section>
 
       {/* work.env 편집 */}
-      <Section title="work.env 파일"
+      <Section title="work.env 파일" collapsible
         right={<div className="flex gap-2"><Btn color="slate" onClick={loadEnv}>불러오기</Btn><Btn color="green" onClick={saveEnv} disabled={!envFile.loaded}>저장</Btn></div>}>
         <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
           <span>경로: <span className="text-slate-300">{envFile.path || config.envPath}</span></span>
@@ -389,7 +389,7 @@ function App() {
       </Section>
 
       {/* Jira 카드 등록 */}
-      <Section title="Jira 카드 등록" right={<Btn color="slate" onClick={loadMeta}>메타 새로고침</Btn>}>
+      <Section title="Jira 카드 등록" collapsible right={<Btn color="slate" onClick={loadMeta}>메타 새로고침</Btn>}>
         {jiraMeta.err && <p className="text-rose-400 text-sm mb-2">{jiraMeta.err}</p>}
         {!config.projectKey && <p className="text-amber-300/80 text-sm mb-2">프로젝트 키를 먼저 설정·저장하세요.</p>}
         <div className="grid grid-cols-2 gap-x-5">
@@ -457,7 +457,7 @@ function App() {
       </Section>
 
       {/* 카드 상태 */}
-      <Section title="카드 상태" right={<Btn color="slate" onClick={loadCards}>조회</Btn>}>
+      <Section title="카드 상태" collapsible defaultOpen right={<Btn color="slate" onClick={loadCards}>조회</Btn>}>
         {cardsErr && <p className="text-rose-400 text-sm mb-2">{cardsErr}</p>}
         {cards.length === 0 ? (
           <p className="text-slate-500 text-sm">조회 버튼을 눌러 {config.triggerMode === "text" ? config.triggerText : config.triggerLabel} 카드 상태를 확인하세요. (Atlassian 자격증명 필요)</p>
@@ -554,7 +554,7 @@ function App() {
       </Section>
 
       {/* 처리 이력 */}
-      <Section title="처리 이력" right={<Btn color="slate" onClick={loadHistory}>새로고침</Btn>}>
+      <Section title="처리 이력" collapsible defaultOpen right={<Btn color="slate" onClick={loadHistory}>새로고침</Btn>}>
         {history.length === 0 ? (
           <p className="text-slate-500 text-sm">아직 처리 이력이 없습니다. (루프가 카드를 처리하면 history.jsonl 에 기록됩니다)</p>
         ) : (
@@ -582,7 +582,7 @@ function App() {
       </Section>
 
       {/* 로그 */}
-      <Section title="실시간 로그">
+      <Section title="실시간 로그" collapsible defaultOpen>
         <div className="grid grid-cols-2 gap-4">
           {["plan", "build"].map((type) => (
             <div key={type}>
