@@ -501,7 +501,7 @@ app.get("/api/jira/meta", async (req, res) => {
     const cfg = getConfig();
     if (!cfg.projectKey) throw new Error("프로젝트 키가 설정되지 않았습니다.");
     const proj = await jiraReq("GET", `/rest/api/3/project/${encodeURIComponent(cfg.projectKey)}`);
-    const issueTypes = (proj.issueTypes || []).map((t) => ({ id: t.id, name: t.name, subtask: !!t.subtask }));
+    const issueTypes = (proj.issueTypes || []).map((t) => ({ id: t.id, name: t.name, subtask: !!t.subtask, hierarchyLevel: t.hierarchyLevel }));
     let epics = [];
     try {
       const data = await jiraSearch(`project = "${cfg.projectKey}" AND issuetype = Epic ORDER BY created DESC`);
@@ -553,7 +553,35 @@ app.post("/api/jira/issue", async (req, res) => {
     };
     if (b.description) fields.description = toADF(b.description);
     const parentKey = String(b.parentKey || "").trim();
-    if (parentKey) fields.parent = { key: parentKey };
+    if (parentKey) {
+      // 계층 검증: 상위는 자식보다 정확히 한 단계 위여야 함(에픽>작업>하위작업).
+      // 안 맞으면 Jira 의 모호한 메시지 대신 실행 가능한 안내를 준다.
+      try {
+        const parent = await jiraReq("GET", `/rest/api/3/issue/${encodeURIComponent(parentKey)}?fields=issuetype`);
+        const proj2 = await jiraReq("GET", `/rest/api/3/project/${encodeURIComponent(cfg.projectKey)}`);
+        const pType = parent.fields && parent.fields.issuetype;
+        const cType = (proj2.issueTypes || []).find((t) => t.name === fields.issuetype.name);
+        const pLv = pType && pType.hierarchyLevel;
+        const cLv = cType && cType.hierarchyLevel;
+        if (pLv != null && cLv != null && pLv !== cLv + 1) {
+          const sub = (proj2.issueTypes || []).find((t) => t.subtask);
+          let hint;
+          if (cLv === 0 && pLv === 0) {
+            hint = `'${pType.name}'(${parentKey})은 '${fields.issuetype.name}'과 같은 계층이라 상위가 될 수 없습니다. `
+              + `이 카드를 ${parentKey} 하위에 두려면 이슈 타입을 '${sub ? sub.name : "하위 작업"}'(Subtask)으로 선택하세요. `
+              + `또는 상위에 에픽 키를 지정하세요.`;
+          } else {
+            hint = `이슈 타입 '${fields.issuetype.name}'(레벨 ${cLv})과 상위 ${parentKey}(${pType.name}, 레벨 ${pLv})의 계층이 맞지 않습니다. `
+              + `상위는 자식보다 한 단계 위여야 합니다(에픽 > 작업/스토리 > 하위작업).`;
+          }
+          throw new Error(hint);
+        }
+      } catch (e) {
+        // 검증 호출 자체 실패(권한 등)는 무시하고 그대로 시도하되, 계층 안내 에러는 그대로 전달
+        if (/계층|상위가 될 수 없|하위 작업/.test(String(e.message))) throw e;
+      }
+      fields.parent = { key: parentKey };
+    }
     if (b.addTriggerLabel) fields.labels = [cfg.triggerLabel || "claude-work"];
     if (b.assignSelf) {
       const me = await jiraReq("GET", "/rest/api/3/myself");

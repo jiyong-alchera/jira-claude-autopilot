@@ -386,8 +386,8 @@ function App() {
               {jiraMeta.epics.map((ep) => <option key={ep.key} value={ep.key}>{ep.key} · {ep.summary}</option>)}
             </select>
           </label>
-          <Field label="또는 상위 키 직접 입력 (우선 적용)" value={newCard.parentInput} onChange={(v) => setNewCard({ ...newCard, parentInput: v })} placeholder="예: EKYB-123 (에픽/부모 카드)"
-            info="입력하면 위 드롭다운보다 우선합니다. 에픽 또는 부모 이슈의 키를 넣으세요. 하위(subtask) 타입은 부모 카드 키가 필요합니다." />
+          <Field label="또는 상위 키 직접 입력 (우선 적용)" value={newCard.parentInput} onChange={(v) => setNewCard({ ...newCard, parentInput: v })} placeholder="예: EKYB-123"
+            info="상위는 자식보다 한 단계 위여야 합니다: 에픽 > 작업/스토리 > 하위작업. 예) 작업(EKYB-764) '하위'에 두려면 이슈 타입을 '하위 작업'으로 선택. 에픽 하위에 두려면 이슈 타입은 '작업' 등으로 두고 상위에 에픽 키 지정." />
         </div>
         <div className="mb-3">
           <div className="flex items-center justify-between mb-1">
