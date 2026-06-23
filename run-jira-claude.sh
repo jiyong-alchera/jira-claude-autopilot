@@ -99,8 +99,8 @@ record_history() {
   local result="$1" pr="${2:-}" branch="${3:-}" ts
   ts="$(date -u +%FT%TZ)"
   mkdir -p "$(dirname "${HISTORY_FILE}")"
-  printf '{"ts":"%s","key":"%s","phase":"%s","result":"%s","pr":"%s","branch":"%s"}\n' \
-    "${ts}" "${ISSUE_KEY}" "${PHASE}" "${result}" "${pr}" "${branch}" >> "${HISTORY_FILE}"
+  printf '{"ts":"%s","project":"%s","key":"%s","phase":"%s","result":"%s","pr":"%s","branch":"%s"}\n' \
+    "${ts}" "${PROJECT_ID:-}" "${ISSUE_KEY}" "${PHASE}" "${result}" "${pr}" "${branch}" >> "${HISTORY_FILE}"
 }
 
 # ===== 카드별 디렉토리 (병렬 실행용) =====

@@ -2,44 +2,30 @@
 #
 # loop-build.sh
 # --------------------------------------------------------------------------
-# 한 시간(기본)마다 build 대상 카드를 탐지하여 카드별로 병렬로 build 를 실행합니다.
-# - build 대상: claude-work 포함 + 담당자=나 + 상태!=DEV COMPLETED + claude-planned 라벨 있음
-# - 담당자 답변이 아직 없으면 해당 카드는 'SKIP' 되고 다음 주기에 재시도됩니다.
+# 한 시간(기본)마다 build 사이클을 실행합니다. 한 번의 사이클에서 run-cycle.js 가
+# 등록된 '모든 프로젝트'를 순회하며 탐지→build 를 수행합니다(프로젝트별 동시 상한 적용).
+# - build 대상: 트리거 + 담당자=나 + 상태!=DEV COMPLETED + claude-planned + claude-answered 라벨
+# - 답변/라벨이 아직 없으면 해당 카드는 'SKIP' 되고 다음 주기에 재시도됩니다.
 # - 완료되면 카드가 DEV COMPLETED 로 전환되어 다음 주기부터 탐지에서 제외됩니다.
-# - 각 카드는 <repo이름>-<카드키> 디렉토리에서 독립 실행 (병렬)
 #
 # 실행:
 #   ./loop-build.sh                # 포그라운드 (Ctrl+C 로 종료)
 #   nohup ./loop-build.sh &        # 백그라운드
 #   LOOP_INTERVAL=1800 ./loop-build.sh   # 주기를 30분으로 변경
+#   RUN_ONCE=1 ./loop-build.sh     # 즉시 1회만 실행 후 종료
 # --------------------------------------------------------------------------
 
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INTERVAL="${LOOP_INTERVAL:-3600}"   # 기본 1시간
-MAX_PARALLEL="${MAX_PARALLEL:-3}"   # 동시에 처리할 카드 수 상한
 LOG="${HERE}/loop-build.log"
 
-echo "[$(date '+%F %T')] loop-build 시작 (interval=${INTERVAL}s, max_parallel=${MAX_PARALLEL})${RUN_ONCE:+ [즉시 1회 실행]}" | tee -a "${LOG}"
+echo "[$(date '+%F %T')] loop-build 시작 (interval=${INTERVAL}s, 전 프로젝트 순회)${RUN_ONCE:+ [즉시 1회 실행]}" | tee -a "${LOG}"
 
 while true; do
-  echo "[$(date '+%F %T')] build 대상 탐지..." | tee -a "${LOG}"
-  keys="$("${HERE}/detect-cards.sh" build 2>>"${LOG}" || true)"
-
-  if [[ -n "${keys}" ]]; then
-    while IFS= read -r key; do
-      [[ -z "${key}" ]] && continue
-      # 동시 실행 상한 유지: 실행 중 작업이 상한 미만이 될 때까지 대기
-      while (( $(jobs -rp | wc -l) >= MAX_PARALLEL )); do sleep 1; done
-      echo "[$(date '+%F %T')] BUILD 실행: ${key} (동시 상한 ${MAX_PARALLEL})" | tee -a "${LOG}"
-      # 카드별 병렬 실행 (각자 <repo이름>-<key> 디렉토리)
-      "${HERE}/run-jira-claude.sh" "${key}" build >>"${LOG}" 2>&1 &
-    done <<< "${keys}"
-    wait   # 이번 주기의 모든 build 작업 완료 대기
-  else
-    echo "[$(date '+%F %T')] build 대상 없음" | tee -a "${LOG}"
-  fi
+  echo "[$(date '+%F %T')] build 사이클 시작 (모든 프로젝트)" | tee -a "${LOG}"
+  node "${HERE}/run-cycle.js" build >>"${LOG}" 2>&1 || echo "[$(date '+%F %T')] run-cycle(build) 오류" | tee -a "${LOG}"
 
   # 즉시 실행 모드: 1회 처리 후 종료
   if [[ -n "${RUN_ONCE:-}" ]]; then
