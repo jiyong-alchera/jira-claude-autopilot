@@ -41,7 +41,8 @@ const DEFAULT_CONFIG = {
   testCmd: "",                                  // 테스트 명령(비우면 claude 자동 감지)
   buildCmd: "",                                 // 빌드 명령(비우면 claude 자동 감지)
   intervalSeconds: 3600,
-  envPath: path.join(SCRIPTS_DIR, "work.env"),  // 대상 repo로 복사할 env 파일
+  envMode: "content",                           // content(내용 직접 입력) | path(파일 경로 지정)
+  envPath: path.join(SCRIPTS_DIR, "work.env"),  // 대상 repo로 복사할 env 파일(=ENV_SRC)
   cloneBase: path.join(SCRIPTS_DIR, "repos"),   // clone 베이스 폴더
 };
 

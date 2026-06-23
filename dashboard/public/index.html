@@ -131,7 +131,7 @@ function App() {
     setStatus(await api.get("/api/loops/status"));
   }, []);
 
-  useEffect(() => { loadAll(); loadHistory(); loadMeta(); }, [loadAll]);
+  useEffect(() => { loadAll(); loadHistory(); loadMeta(); loadEnv(); }, [loadAll]);
 
   // 폴링: 상태 + 로그 + 이력
   useEffect(() => {
@@ -344,12 +344,53 @@ function App() {
           <Field label="주기(초)" type="number" value={config.intervalSeconds} onChange={(v) => setConfig({ ...config, intervalSeconds: parseInt(v || "3600", 10) })} />
           <Field label="동시 처리 상한 (병렬)" type="number" value={config.maxParallel} onChange={(v) => setConfig({ ...config, maxParallel: parseInt(v || "3", 10) })} placeholder="3" />
           <Field label="작업 폴더 (WORK_DIR)" value={config.workDir} onChange={(v) => setConfig({ ...config, workDir: v })} />
-          <Field label="env 파일 경로 (work.env)" value={config.envPath} onChange={(v) => setConfig({ ...config, envPath: v })} placeholder="/path/to/work.env" />
           <Field label="clone 베이스 폴더" value={config.cloneBase} onChange={(v) => setConfig({ ...config, cloneBase: v })} placeholder="/path/to/repos" />
           <Field label="테스트 명령 (비우면 자동 감지)" value={config.testCmd} onChange={(v) => setConfig({ ...config, testCmd: v })} placeholder="예: npm test / pytest" />
           <Field label="빌드 명령 (비우면 자동 감지)" value={config.buildCmd} onChange={(v) => setConfig({ ...config, buildCmd: v })} placeholder="예: npm run build" />
         </div>
         <p className="text-xs text-slate-500 mt-2">PR 전 검증: 테스트가 있으면 통과까지 수정, 없으면 빌드만 시도(빌드 수단 없으면 건너뜀).</p>
+
+        {/* 환경 변수(.env) — 프로젝트 설정에 종속 */}
+        <div className="mt-4 pt-4 border-t border-slate-700">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-slate-300">환경 변수 (.env) — 대상 repo로 복사</span>
+            {config.envMode !== "path" && (
+              <div className="flex gap-2">
+                <Btn color="slate" onClick={loadEnv}>불러오기</Btn>
+                <Btn color="green" onClick={saveEnv} disabled={!envFile.loaded}>내용 저장</Btn>
+              </div>
+            )}
+          </div>
+          <label className="block mb-3">
+            <span className="text-sm text-slate-400">제공 방식</span>
+            <select value={config.envMode || "content"} onChange={(e) => setConfig({ ...config, envMode: e.target.value })}
+              className="mt-1 w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400">
+              <option value="content">내용 직접 입력</option>
+              <option value="path">파일 경로 지정</option>
+            </select>
+          </label>
+          {config.envMode === "path" ? (
+            <div>
+              <Field label="사용할 .env 파일 경로 (이 파일을 그대로 복사)" value={config.envPath} onChange={(v) => setConfig({ ...config, envPath: v })} placeholder="/abs/path/to/.env" />
+              <p className="text-xs text-slate-500">지정한 파일을 대상 repo 의 .env(work.env)로 복사합니다. 내용은 대시보드에서 편집하지 않으니 "설정 저장"만 누르세요.</p>
+            </div>
+          ) : (
+            <div>
+              <Field label="저장 경로 (비우면 <작업폴더>/work.env)" value={config.envPath} onChange={(v) => setConfig({ ...config, envPath: v })} placeholder="비워두면 work.env 로 저장" />
+              <div className="text-xs text-slate-400 mb-1">
+                {envFile.loaded ? (envFile.exists ? `현재 파일 수정: ${new Date(envFile.mtime).toLocaleString()}` : "파일 없음 — 저장 시 생성") : "‘불러오기’로 기존 내용을 가져오거나 바로 입력 후 ‘내용 저장’"}
+              </div>
+              <textarea
+                value={envFile.content}
+                onChange={(e) => setEnvFile({ ...envFile, content: e.target.value, loaded: true })}
+                spellCheck={false}
+                placeholder="KEY=VALUE 형식으로 .env 내용을 직접 입력"
+                className="w-full h-60 bg-black/60 border border-slate-700 rounded-lg p-3 text-xs font-mono focus:outline-none focus:border-indigo-400"
+              />
+              <p className="text-xs text-amber-300/80 mt-1">⚠ 시크릿입니다. 저장 시 기존 파일은 .bak 백업되고, 대상 repo 복사 시 .git/info/exclude 로 커밋이 차단됩니다.</p>
+            </div>
+          )}
+        </div>
       </Section>
 
       {/* 자격증명 */}
@@ -368,24 +409,6 @@ function App() {
             info="설정하면 카드가 처리 완료(또는 반복 실패)될 때마다 이 Webhook 으로 알림을 보냅니다. 비워두면 알림은 스킵됩니다." />
         </div>
         <p className="text-xs text-slate-500 mt-2">Slack Webhook 을 입력하면 카드가 처리 완료될 때마다 알림을 보냅니다. 비워두면 알림은 스킵됩니다.</p>
-      </Section>
-
-      {/* work.env 편집 */}
-      <Section title="work.env 파일" collapsible
-        right={<div className="flex gap-2"><Btn color="slate" onClick={loadEnv}>불러오기</Btn><Btn color="green" onClick={saveEnv} disabled={!envFile.loaded}>저장</Btn></div>}>
-        <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
-          <span>경로: <span className="text-slate-300">{envFile.path || config.envPath}</span></span>
-          <span>{envFile.loaded ? (envFile.exists ? `수정: ${new Date(envFile.mtime).toLocaleString()}` : "파일 없음 (저장 시 생성)") : "불러오기를 눌러 내용을 편집하세요"}</span>
-        </div>
-        <textarea
-          value={envFile.content}
-          onChange={(e) => setEnvFile({ ...envFile, content: e.target.value })}
-          disabled={!envFile.loaded}
-          spellCheck={false}
-          placeholder={envFile.loaded ? "KEY=VALUE 형식" : "‘불러오기’ 후 편집 가능"}
-          className="w-full h-72 bg-black/60 border border-slate-700 rounded-lg p-3 text-xs font-mono disabled:opacity-50 focus:outline-none focus:border-indigo-400"
-        />
-        <p className="text-xs text-amber-300/80 mt-2">⚠ 시크릿 파일입니다. 저장 시 기존 파일은 .bak 으로 백업되며, 대상 repo로 복사될 때 커밋되지 않도록 .gitignore 에 포함되어야 합니다.</p>
       </Section>
 
       {/* Jira 카드 등록 */}
