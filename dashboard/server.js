@@ -382,6 +382,34 @@ app.post("/api/env", (req, res) => {
   }
 });
 
+// ----- 라이브 리로드 (SSE + 파일 감시, 외부 의존성 없음) -----
+// 프론트 파일이 바뀌면 연결된 브라우저에 reload 이벤트를 보내 자동 새로고침한다.
+// 백엔드 재시작(nodemon 등) 시에도 SSE 가 끊겼다 재연결되며 브라우저가 새로고침된다.
+// 비활성화: DASHBOARD_NO_LIVERELOAD=1
+const LIVERELOAD = process.env.DASHBOARD_NO_LIVERELOAD !== "1";
+const liveClients = new Set();
+if (LIVERELOAD) {
+  app.get("/api/livereload", (req, res) => {
+    res.set({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
+    res.flushHeaders?.();
+    res.write("retry: 1000\n\n");
+    liveClients.add(res);
+    req.on("close", () => liveClients.delete(res));
+  });
+  let reloadTimer = null;
+  const broadcastReload = () => {
+    for (const c of liveClients) { try { c.write("data: reload\n\n"); } catch {} }
+  };
+  try {
+    fs.watch(path.join(ROOT, "public"), { recursive: true }, () => {
+      clearTimeout(reloadTimer);
+      reloadTimer = setTimeout(broadcastReload, 100); // 연속 저장 디바운스
+    });
+  } catch (e) {
+    console.warn("  (livereload) 파일 감시 실패:", e.message);
+  }
+}
+
 // 정적 프론트
 app.use(express.static(path.join(ROOT, "public")));
 

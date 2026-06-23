@@ -5,10 +5,14 @@
   "description": "Jira -> Claude 루프 자동화 제어/모니터링 대시보드 (React + Express)",
   "type": "commonjs",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev": "nodemon --watch server.js --watch public server.js"
   },
   "dependencies": {
     "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
   },
   "engines": {
     "node": ">=18"

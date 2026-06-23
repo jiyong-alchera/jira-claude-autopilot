@@ -341,5 +341,22 @@ function App() {
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
   </script>
+
+  <!-- 라이브 리로드: 프론트 파일 변경 시 자동 새로고침, 백엔드 재시작 시 재연결되며 새로고침 -->
+  <script>
+  (function () {
+    var es, connectedBefore = false;
+    function connect() {
+      try { es = new EventSource("/api/livereload"); } catch (e) { return; }
+      es.onmessage = function () { location.reload(); };
+      es.onopen = function () {
+        if (connectedBefore) location.reload(); // 백엔드 재시작 후 재연결 → 새로고침
+        connectedBefore = true;
+      };
+      es.onerror = function () { try { es.close(); } catch (e) {} setTimeout(connect, 1000); };
+    }
+    connect();
+  })();
+  </script>
 </body>
 </html>
