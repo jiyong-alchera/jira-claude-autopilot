@@ -273,9 +273,35 @@ function adfToText(node) {
   if (node.type === "emoji") return (node.attrs && (node.attrs.shortName || node.attrs.text)) || "";
   const inner = node.content ? adfToText(node.content) : "";
   if (node.type === "listItem") return "• " + inner.replace(/\n+$/, "") + "\n";
-  const blocks = ["paragraph", "heading", "blockquote", "codeBlock", "rule", "panel"];
+  if (node.type === "blockquote") {
+    const t = inner.replace(/\n+$/, "");
+    return t.split("\n").map((l) => "> " + l).join("\n") + "\n"; // 인용(답글) 표시
+  }
+  const blocks = ["paragraph", "heading", "codeBlock", "rule", "panel"];
   if (blocks.indexOf(node.type) !== -1) return inner + "\n";
   return inner;
+}
+
+// 답글 ADF: 원 코멘트 인용(blockquote) + 작성자 @멘션 + 답변 본문.
+// Jira 코멘트는 스레드를 지원하지 않으므로 인용+멘션으로 "대댓글"을 표현한다.
+function buildReplyADF(body, replyTo) {
+  const content = [];
+  if (replyTo && replyTo.snippet) {
+    const q = String(replyTo.snippet).split("\n").map((ln) => ({ type: "paragraph", content: ln ? [{ type: "text", text: ln }] : [] }));
+    content.push({ type: "blockquote", content: q.length ? q : [{ type: "paragraph", content: [] }] });
+  }
+  const lines = String(body).split("\n");
+  lines.forEach((ln, idx) => {
+    const para = { type: "paragraph", content: [] };
+    if (idx === 0 && replyTo && replyTo.accountId) {
+      para.content.push({ type: "mention", attrs: { id: replyTo.accountId, text: "@" + (replyTo.author || "user") } });
+      para.content.push({ type: "text", text: " " });
+    }
+    if (ln) para.content.push({ type: "text", text: ln });
+    content.push(para);
+  });
+  if (content.length === 0) content.push({ type: "paragraph", content: [] });
+  return { type: "doc", version: 1, content };
 }
 
 // 평문 설명 → Atlassian Document Format(ADF) 변환(REST v3 description 필드용)
@@ -510,7 +536,9 @@ app.get("/api/jira/issue/:key", async (req, res) => {
     const issue = await jiraReq("GET", `/rest/api/3/issue/${encodeURIComponent(key)}?fields=summary,description,status,labels`);
     const cs = await jiraReq("GET", `/rest/api/3/issue/${encodeURIComponent(key)}/comment?maxResults=50`);
     const comments = (cs.comments || []).map((c) => ({
+      id: c.id,
       author: (c.author && c.author.displayName) || "?",
+      accountId: c.author && c.author.accountId,
       created: c.created,
       body: adfToText(c.body),
     }));
@@ -535,7 +563,9 @@ app.post("/api/jira/issue/:key/comment", async (req, res) => {
     const key = req.params.key;
     const body = String((req.body || {}).body || "").trim();
     if (!body) throw new Error("답변 내용을 입력하세요.");
-    await jiraReq("POST", `/rest/api/3/issue/${encodeURIComponent(key)}/comment`, { body: toADF(body) });
+    const replyTo = (req.body || {}).replyTo;
+    const adf = replyTo ? buildReplyADF(body, replyTo) : toADF(body);
+    await jiraReq("POST", `/rest/api/3/issue/${encodeURIComponent(key)}/comment`, { body: adf });
     if ((req.body || {}).markAnswered) {
       const label = cfg.answeredLabel || "claude-answered";
       await jiraReq("PUT", `/rest/api/3/issue/${encodeURIComponent(key)}`, { update: { labels: [{ add: label }] } });

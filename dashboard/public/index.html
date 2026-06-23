@@ -109,6 +109,7 @@ function App() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [reply, setReply] = useState("");
   const [replyAnswered, setReplyAnswered] = useState(true);
+  const [replyTarget, setReplyTarget] = useState(null);
   const [posting, setPosting] = useState(false);
   const [toast, setToast] = useState("");
   const [envFile, setEnvFile] = useState({ path: "", content: "", mtime: null, exists: false, loaded: false });
@@ -158,19 +159,22 @@ function App() {
   };
   const toggleCard = async (key) => {
     if (expandedKey === key) { setExpandedKey(""); setDetail(null); return; }
-    setExpandedKey(key); setDetail(null); setReply(""); setReplyAnswered(true); setDetailLoading(true);
+    setExpandedKey(key); setDetail(null); setReply(""); setReplyAnswered(true); setReplyTarget(null); setDetailLoading(true);
     const r = await api.get(`/api/jira/issue/${key}`);
     setDetailLoading(false);
     setDetail(r.ok ? r : { error: r.message || "조회 실패" });
   };
+  const replyToComment = (cm) => {
+    setReplyTarget({ author: cm.author, accountId: cm.accountId, snippet: (cm.body || "").slice(0, 280) });
+  };
   const postReply = async () => {
     if (!reply.trim()) { flash("답변 내용을 입력하세요"); return; }
     setPosting(true);
-    const r = await api.post(`/api/jira/issue/${expandedKey}/comment`, { body: reply, markAnswered: replyAnswered });
+    const r = await api.post(`/api/jira/issue/${expandedKey}/comment`, { body: reply, markAnswered: replyAnswered, replyTo: replyTarget || undefined });
     setPosting(false);
     if (r.ok) {
       flash("답변 등록됨" + (replyAnswered ? " (claude-answered 라벨 추가)" : ""));
-      setReply("");
+      setReply(""); setReplyTarget(null);
       const d = await api.get(`/api/jira/issue/${expandedKey}`);
       if (d.ok) setDetail(d);
       loadCards();
@@ -459,12 +463,21 @@ function App() {
                                   <p className="text-slate-500 text-xs">코멘트 없음</p>
                                 ) : detail.comments.map((cm, i) => (
                                   <div key={i} className="bg-slate-800/60 border border-slate-700 rounded p-2">
-                                    <div className="text-[11px] text-slate-400 mb-1">{cm.author} · {cm.created ? new Date(cm.created).toLocaleString() : ""}</div>
+                                    <div className="flex items-center justify-between mb-1">
+                                      <span className="text-[11px] text-slate-400">{cm.author} · {cm.created ? new Date(cm.created).toLocaleString() : ""}</span>
+                                      <button onClick={() => replyToComment(cm)} className="text-[11px] text-indigo-400 hover:text-indigo-300">↳ 답글</button>
+                                    </div>
                                     <div className="text-xs whitespace-pre-wrap text-slate-200">{cm.body}</div>
                                   </div>
                                 ))}
                               </div>
                               <div className="text-xs text-slate-400 mb-1">답변 작성</div>
+                              {replyTarget && (
+                                <div className="flex items-center justify-between bg-indigo-500/10 border border-indigo-500/30 rounded px-2 py-1 mb-1 text-xs text-indigo-200">
+                                  <span>↳ <b>{replyTarget.author}</b> 의 코멘트에 답글 (원문 인용·멘션 포함)</span>
+                                  <button onClick={() => setReplyTarget(null)} className="text-slate-400 hover:text-rose-300">취소</button>
+                                </div>
+                              )}
                               <textarea value={reply} onChange={(e) => setReply(e.target.value)} spellCheck={false}
                                 placeholder="질문에 대한 답변/추가 설계를 적으세요. 등록하면 카드 코멘트로 달립니다."
                                 className="w-full h-24 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
