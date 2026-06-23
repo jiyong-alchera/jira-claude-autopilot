@@ -51,6 +51,7 @@ cd dashboard
 npm install
 npm start          # http://localhost:4317  (프론트 수정 시 브라우저 자동 새로고침)
 npm run dev        # 개발 모드: 백엔드 자동 재시작(nodemon) + 라이브 리로드
+npm test           # 단위 테스트 (node:test, 무설치) — lib.js 순수 로직·프로젝트 스토어
 ```
 
 대시보드에서 1) 자격증명 입력 → 2) 프로젝트 설정(대상 repo·Jira 프로젝트 등) → 3) work.env 편집 →

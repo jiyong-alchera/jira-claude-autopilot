@@ -46,74 +46,19 @@ const DEFAULT_CONFIG = {
   envPath: "",                                  // 비우면 <workDir>/work-<id>.env 사용
   cloneBase: path.join(SCRIPTS_DIR, "repos"),
 };
-const DEFAULT_CREDS = { anthropicApiKey: "", githubToken: "", atlassianEmail: "", atlassianToken: "", slackWebhookUrl: "" };
 
-// ----- 파일 IO 헬퍼 -----
-function readJson(p, fallback) {
-  try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return fallback; }
-}
-function writeJson(p, obj, mode) {
-  fs.writeFileSync(p, JSON.stringify(obj, null, 2), { mode: mode || 0o644 });
-}
+// ----- 순수 로직 + 프로젝트 스토어 (단위 테스트 대상은 lib.js 로 분리) -----
+const lib = require("./lib");
+const { slugify, triggerClause, detectJql, adfToText, toADF, buildReplyADF, maskCreds, applyCreds } = lib;
+const store = lib.createStore({
+  projectsPath: PROJECTS_PATH, credsPath: PROJECT_CREDS_PATH,
+  configPath: CONFIG_PATH, credPath: CRED_PATH, defaultConfig: DEFAULT_CONFIG,
+});
+const { listProjects, getProject, defaultProjectId, saveProject, removeProject, getProjectCreds, setProjectCreds } = store;
 
-// ----- 프로젝트 스토어 -----
-function slugify(s) {
-  return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "proj";
-}
-function migrateIfNeeded() {
-  if (readJson(PROJECTS_PATH, null)) return; // 이미 멀티 프로젝트
-  const legacy = readJson(CONFIG_PATH, null);
-  if (legacy) {
-    const id = slugify(legacy.projectKey || "default");
-    const name = legacy.projectKey || "기본 프로젝트";
-    writeJson(PROJECTS_PATH, { projects: [{ id, name, ...legacy }] });
-    const lc = readJson(CRED_PATH, null);
-    if (lc) writeJson(PROJECT_CREDS_PATH, { [id]: { ...DEFAULT_CREDS, ...lc } }, 0o600);
-    console.log(`  마이그레이션: 기존 설정을 프로젝트 '${id}' 로 가져왔습니다.`);
-  } else {
-    writeJson(PROJECTS_PATH, { projects: [] });
-  }
-}
-function listProjects() {
-  const raw = readJson(PROJECTS_PATH, { projects: [] });
-  return (raw.projects || []).map((p) => ({ ...DEFAULT_CONFIG, ...p }));
-}
-function getProject(id) {
-  return listProjects().find((p) => p.id === id) || null;
-}
-function defaultProjectId() {
-  const list = listProjects();
-  return list.length ? list[0].id : null;
-}
-function saveProject(p) {
-  const list = listProjects();
-  let id = p.id || slugify(p.name || p.projectKey || "proj");
-  if (!p.id) { const base = id; let n = 2; while (list.some((x) => x.id === id)) id = `${base}-${n++}`; }
-  const idx = list.findIndex((x) => x.id === id);
-  const merged = idx >= 0 ? { ...list[idx], ...p, id } : { ...DEFAULT_CONFIG, ...p, id };
-  if (idx >= 0) list[idx] = merged; else list.push(merged);
-  writeJson(PROJECTS_PATH, { projects: list });
-  return merged;
-}
-function removeProject(id) {
-  const list = listProjects().filter((p) => p.id !== id);
-  writeJson(PROJECTS_PATH, { projects: list });
-  const creds = readJson(PROJECT_CREDS_PATH, {});
-  if (creds[id]) { delete creds[id]; writeJson(PROJECT_CREDS_PATH, creds, 0o600); }
-}
-function getProjectCreds(id) {
-  const all = readJson(PROJECT_CREDS_PATH, {});
-  return { ...DEFAULT_CREDS, ...(all[id] || {}) };
-}
-function setProjectCreds(id, next) {
-  const all = readJson(PROJECT_CREDS_PATH, {});
-  all[id] = { ...DEFAULT_CREDS, ...(all[id] || {}), ...next };
-  writeJson(PROJECT_CREDS_PATH, all, 0o600);
-}
 function projectEnvPath(cfg) {
   return cfg.envPath || path.join(cfg.workDir || SCRIPTS_DIR, `work-${cfg.id}.env`);
 }
-
 // 레거시 호환: 인자 없는 호출은 "첫 프로젝트"를 사용(기존 단일 프로젝트 UI 유지)
 function getConfig(id) {
   const pid = id || defaultProjectId();
@@ -121,9 +66,8 @@ function getConfig(id) {
 }
 function getCreds(id) {
   const pid = id || defaultProjectId();
-  return pid ? getProjectCreds(pid) : { ...DEFAULT_CREDS };
+  return pid ? getProjectCreds(pid) : { ...lib.DEFAULT_CREDS };
 }
-
 // 요청에서 프로젝트 해석(?project=id 또는 body.project, 없으면 첫 프로젝트)
 function resolveProject(req) {
   const id = (req.query && req.query.project) || (req.body && req.body.project) || defaultProjectId();
@@ -131,25 +75,9 @@ function resolveProject(req) {
   if (!cfg) { const e = new Error("프로젝트가 없습니다. 먼저 프로젝트를 등록하세요."); e.code = 404; throw e; }
   return { id: cfg.id, cfg, cred: getProjectCreds(cfg.id) };
 }
-function maskCreds(c) {
-  return {
-    anthropicApiKey: !!c.anthropicApiKey, githubToken: !!c.githubToken,
-    atlassianEmail: c.atlassianEmail || "", atlassianToken: !!c.atlassianToken,
-    slackWebhookUrl: !!c.slackWebhookUrl,
-  };
-}
-function applyCreds(cur, b) {
-  const apply = (k) => (b[k] === undefined ? cur[k] : b[k] === "__CLEAR__" ? "" : b[k] === "" ? cur[k] : b[k]);
-  return {
-    anthropicApiKey: apply("anthropicApiKey"),
-    githubToken: apply("githubToken"),
-    atlassianEmail: b.atlassianEmail !== undefined ? b.atlassianEmail : cur.atlassianEmail,
-    atlassianToken: apply("atlassianToken"),
-    slackWebhookUrl: apply("slackWebhookUrl"),
-  };
-}
 
-migrateIfNeeded();
+const migratedId = store.migrateIfNeeded();
+if (migratedId) console.log(`  마이그레이션: 기존 설정을 프로젝트 '${migratedId}' 로 가져왔습니다.`);
 
 // ----- 실행 중인 루프 프로세스 추적 (pidfile 기반) -----
 const loops = { plan: null, build: null };
@@ -308,51 +236,7 @@ function runClaude(prompt, cred, timeoutMs = 120000) {
   });
 }
 
-// ----- ADF 헬퍼 -----
-function adfToText(node) {
-  if (!node) return "";
-  if (Array.isArray(node)) return node.map(adfToText).join("");
-  if (node.type === "text") return node.text || "";
-  if (node.type === "hardBreak") return "\n";
-  if (node.type === "mention") return "@" + (node.attrs && node.attrs.text ? node.attrs.text.replace(/^@/, "") : "");
-  if (node.type === "emoji") return (node.attrs && (node.attrs.shortName || node.attrs.text)) || "";
-  const inner = node.content ? adfToText(node.content) : "";
-  if (node.type === "listItem") return "• " + inner.replace(/\n+$/, "") + "\n";
-  if (node.type === "blockquote") { const t = inner.replace(/\n+$/, ""); return t.split("\n").map((l) => "> " + l).join("\n") + "\n"; }
-  if (["paragraph", "heading", "codeBlock", "rule", "panel"].indexOf(node.type) !== -1) return inner + "\n";
-  return inner;
-}
-function buildReplyADF(body, replyTo) {
-  const content = [];
-  if (replyTo && replyTo.snippet) {
-    const q = String(replyTo.snippet).split("\n").map((ln) => ({ type: "paragraph", content: ln ? [{ type: "text", text: ln }] : [] }));
-    content.push({ type: "blockquote", content: q.length ? q : [{ type: "paragraph", content: [] }] });
-  }
-  String(body).split("\n").forEach((ln, idx) => {
-    const para = { type: "paragraph", content: [] };
-    if (idx === 0 && replyTo && replyTo.accountId) {
-      para.content.push({ type: "mention", attrs: { id: replyTo.accountId, text: "@" + (replyTo.author || "user") } });
-      para.content.push({ type: "text", text: " " });
-    }
-    if (ln) para.content.push({ type: "text", text: ln });
-    content.push(para);
-  });
-  if (content.length === 0) content.push({ type: "paragraph", content: [] });
-  return { type: "doc", version: 1, content };
-}
-function toADF(text) {
-  return { type: "doc", version: 1, content: String(text).split("\n").map((ln) => ({ type: "paragraph", content: ln ? [{ type: "text", text: ln }] : [] })) };
-}
-function triggerClause(cfg) {
-  return cfg.triggerMode === "text" ? `text ~ "${cfg.triggerText}"` : `labels = "${cfg.triggerLabel}"`;
-}
-function detectJql(mode, cfg) {
-  const proj = cfg.projectKey ? ` AND project = "${cfg.projectKey}"` : "";
-  const failed = ` AND (labels != "${cfg.failedLabel}" OR labels IS EMPTY)`;
-  const base = `assignee = currentUser() AND status != "${cfg.doneStatus}" AND ${triggerClause(cfg)}`;
-  if (mode === "plan") return `${base} AND (labels != "${cfg.plannedLabel}" OR labels IS EMPTY)${failed}${proj}`;
-  return `${base} AND labels = "${cfg.plannedLabel}" AND labels = "${cfg.answeredLabel}"${failed}${proj}`;
-}
+// ADF/트리거/detectJql 등 순수 로직은 lib.js 에서 가져옴(상단 destructure).
 const fail = (res, e) => res.status(e && e.code === 404 ? 404 : 500).json({ ok: false, message: String((e && e.message) || e) });
 
 // =============================== API ROUTES ==================================

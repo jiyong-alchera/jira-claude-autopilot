@@ -403,7 +403,9 @@ loop-work/                     # (= 저장소 루트)
 ├─ loop-*.pid                  # 루프 pidfile (gitignore, 런타임 생성)
 ├─ claude-logs/                # 카드별 claude 상세 실행 로그 (gitignore, 런타임 생성)
 └─ dashboard/
-   ├─ server.js                # Express 백엔드
+   ├─ server.js                # Express 백엔드 (라우팅·루프·Jira REST)
+   ├─ lib.js                   # 순수 로직 + 프로젝트 스토어 (단위 테스트 대상)
+   ├─ test/lib.test.js         # 단위 테스트 (node:test) — `npm test`
    ├─ package.json
    ├─ public/index.html        # React 대시보드 (CDN)
    ├─ projects.json            # 프로젝트 목록(설정) (gitignore)
