@@ -168,7 +168,7 @@ function ProjectCard({ proj, onDeleted, flash }) {
     setCreating(true);
     const r = await api.post("/api/jira/issue", { summary: newCard.summary, description: newCard.description, issueType: newCard.issueType, parentKey: newCard.parentInput.trim() || newCard.epicKey, addTriggerLabel: newCard.addTriggerLabel, assignSelf: newCard.assignSelf, attachments: newCard.attachments, project: PID });
     setCreating(false);
-    if (r.ok) { let m = `카드 생성됨: ${r.key}`; if (r.attached?.length) m += ` · 첨부 ${r.attached.length}`; if (r.attachErrors?.length) m += ` · 첨부실패 ${r.attachErrors.length}`; flash(m); setNewCard((p) => ({ ...p, summary: "", description: "", parentInput: "", attachments: [] })); loadCards(); }
+    if (r.ok) { let m = `카드 생성됨: ${r.key}`; if (r.note) m += ` · ${r.note}`; if (r.attached?.length) m += ` · 첨부 ${r.attached.length}`; if (r.attachErrors?.length) m += ` · 첨부실패 ${r.attachErrors.length}`; flash(m); setNewCard((p) => ({ ...p, summary: "", description: "", parentInput: "", attachments: [] })); loadCards(); }
     else flash(r.message || "생성 실패");
   };
   const loadCards = async () => { const r = await api.get(withP("/api/cards")); if (r.ok) { setCards(r.issues); setCardsErr(""); } else setCardsErr(r.message || "조회 실패"); };

@@ -408,23 +408,29 @@ app.post("/api/jira/issue", async (req, res) => {
     const fields = { project: { key: cfg.projectKey }, issuetype: { name: b.issueType || "Task" }, summary };
     if (b.description) fields.description = toADF(b.description);
     const parentKey = String(b.parentKey || "").trim();
+    let autoNote = "";
     if (parentKey) {
       try {
         const parent = await jiraReq("GET", `/rest/api/3/issue/${encodeURIComponent(parentKey)}?fields=issuetype`, null, cfg, cred);
         const proj2 = await jiraReq("GET", `/rest/api/3/project/${encodeURIComponent(cfg.projectKey)}`, null, cfg, cred);
         const pType = parent.fields && parent.fields.issuetype;
+        const sub = (proj2.issueTypes || []).find((t) => t.subtask);
         const cType = (proj2.issueTypes || []).find((t) => t.name === fields.issuetype.name);
         const pLv = pType && pType.hierarchyLevel, cLv = cType && cType.hierarchyLevel;
         if (pLv != null && cLv != null && pLv !== cLv + 1) {
-          const sub = (proj2.issueTypes || []).find((t) => t.subtask);
-          let hint;
           const subName = sub ? sub.name : "Subtask";
-          if (cLv === 0 && pLv === 0) hint = `'${pType.name}'(${parentKey}) 하위에는 '${subName}'(하위 작업)만 만들 수 있습니다. 이슈 타입을 '${subName}'(으)로 바꾸면 ${parentKey} 하위로 생성됩니다. (작업/스토리 등 레벨0 타입을 두려면 상위는 '에픽'이어야 합니다.)`;
-          else if (cLv === 0 && pLv === 1) hint = `상위 ${parentKey} 가 에픽이 아니라 '${pType.name}'(레벨 ${pLv}) 입니다. 작업/스토리(레벨0)는 에픽 하위에만 둘 수 있습니다.`;
-          else hint = `이슈 타입 '${fields.issuetype.name}'(레벨 ${cLv})과 상위 ${parentKey}(${pType.name}, 레벨 ${pLv})의 계층이 맞지 않습니다. 상위는 자식보다 한 단계 위여야 합니다(에픽 > 작업/스토리/버그 > 하위작업). 버그/작업/스토리 하위에는 '${subName}'(을)를 쓰세요.`;
-          throw new Error(hint);
+          // 상위가 하위작업보다 한 단계 위(레벨0: 버그/작업/스토리)면, 그 아래로 가능한 건 Subtask 뿐 → 자동 전환
+          if (sub && sub.hierarchyLevel != null && pLv === sub.hierarchyLevel + 1) {
+            fields.issuetype = { name: sub.name };
+            autoNote = `상위 ${parentKey}(${pType.name}) 하위라서 이슈 타입을 '${sub.name}'(으)로 자동 전환했습니다.`;
+          } else {
+            const e = new Error(cLv === 0 && pLv === 1
+              ? `상위 ${parentKey} 가 에픽이 아니라 '${pType.name}'(레벨 ${pLv}) 입니다. 작업/스토리(레벨0)는 에픽 하위에만 둘 수 있습니다.`
+              : `이슈 타입 '${fields.issuetype.name}'(레벨 ${cLv})과 상위 ${parentKey}(${pType.name}, 레벨 ${pLv})의 계층이 맞지 않습니다. 상위는 자식보다 한 단계 위여야 합니다(에픽 > 작업/스토리/버그 > 하위작업).`);
+            e.hierarchy = true; throw e;
+          }
         }
-      } catch (e) { if (/계층|상위가 될 수 없|하위 작업/.test(String(e.message))) throw e; }
+      } catch (e) { if (e.hierarchy) throw e; /* 검증 호출 실패(네트워크 등)는 무시하고 그대로 시도 */ }
       fields.parent = { key: parentKey };
     }
     if (b.addTriggerLabel) fields.labels = [cfg.triggerLabel || "claude-work"];
@@ -436,7 +442,7 @@ app.post("/api/jira/issue", async (req, res) => {
       try { await jiraAttach(created.key, a.filename, a.dataBase64, a.contentType, cfg, cred); attached.push(a.filename || "file"); }
       catch (e) { attachErrors.push(`${a.filename || "file"}: ${e.message}`); }
     }
-    res.json({ ok: true, key: created.key, url: `https://${cfg.jiraSite}/browse/${created.key}`, attached, attachErrors });
+    res.json({ ok: true, key: created.key, url: `https://${cfg.jiraSite}/browse/${created.key}`, attached, attachErrors, note: autoNote });
   } catch (e) { fail(res, e); }
 });
 
