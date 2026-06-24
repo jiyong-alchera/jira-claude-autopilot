@@ -246,11 +246,15 @@ function ProjectCard({ proj, onDeleted, flash }) {
               <div className="grid grid-cols-12 gap-2 items-center">
                 <input value={r.name || ""} onChange={(e) => upd("name", e.target.value)} placeholder="name(라벨용)" className="col-span-3 bg-slate-800 border border-slate-600 rounded-lg px-2 py-1.5 text-sm" />
                 <input value={r.url || ""} onChange={(e) => upd("url", e.target.value)} placeholder="https://github.com/Org/repo.git" className="col-span-4 bg-slate-800 border border-slate-600 rounded-lg px-2 py-1.5 text-sm" />
-                <input value={r.baseBranch || ""} onChange={(e) => upd("baseBranch", e.target.value)} placeholder="base" className="col-span-2 bg-slate-800 border border-slate-600 rounded-lg px-2 py-1.5 text-sm" />
-                <input value={r.envDest || ""} onChange={(e) => upd("envDest", e.target.value)} placeholder="env 대상경로(예:.env)" className="col-span-2 bg-slate-800 border border-slate-600 rounded-lg px-2 py-1.5 text-sm" />
-                <div className="col-span-1 flex gap-1 justify-end">
-                  <button onClick={() => r.name ? openRepoEnv(r.name) : flash("name 먼저 입력")} className="text-xs text-indigo-400 hover:text-indigo-300" title="이 repo 의 .env 편집">env</button>
-                  <button onClick={() => setConfig({ ...config, repos: config.repos.filter((_, idx) => idx !== i) })} className="text-slate-400 hover:text-rose-300">✕</button>
+                <input value={r.baseBranch || ""} onChange={(e) => upd("baseBranch", e.target.value)} placeholder="base" className="col-span-1 bg-slate-800 border border-slate-600 rounded-lg px-2 py-1.5 text-sm" />
+                <input value={r.envDest || ""} onChange={(e) => upd("envDest", e.target.value)} placeholder="env 대상경로 (예: src/main/resources/application-private.properties)" title={r.envDest || ""} className="col-span-2 bg-slate-800 border border-slate-600 rounded-lg px-2 py-1.5 text-sm" />
+                <div className="col-span-2 flex gap-1.5 justify-end items-center">
+                  <button onClick={() => r.name ? openRepoEnv(r.name) : flash("name 먼저 입력")} title="이 repo 의 .env 편집"
+                    className={`inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg border transition ${envOpen ? "bg-indigo-600 text-white border-indigo-500" : "bg-indigo-500/15 text-indigo-300 border-indigo-500/40 hover:bg-indigo-500/30"}`}>
+                    <span>🔑</span> env
+                  </button>
+                  <button onClick={() => setConfig({ ...config, repos: config.repos.filter((_, idx) => idx !== i) })} title="repo 삭제"
+                    className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 border border-slate-600 hover:text-rose-300 hover:border-rose-500/50 hover:bg-rose-500/10 transition">✕</button>
                 </div>
               </div>
               {envOpen && (
