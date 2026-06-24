@@ -135,7 +135,9 @@ if ! mkdir "${LOCK_DIR}" 2>/dev/null; then
   echo "SKIP: [${ISSUE_KEY}] 이미 처리 중(lock) — 동시 실행 방지로 종료"
   exit 0
 fi
-trap 'rmdir "${LOCK_DIR}" 2>/dev/null || true' EXIT
+# 처리 중 단계 표시용: 현재 phase 를 락 옆 파일에 기록(대시보드가 '처리 중' 표시에 사용)
+printf '%s' "${PHASE}" > "${LOCK_DIR}.phase" 2>/dev/null || true
+trap 'rmdir "${LOCK_DIR}" 2>/dev/null || true; rm -f "${LOCK_DIR}.phase" 2>/dev/null || true' EXIT
 
 # ===== 1) clone (없으면) =====
 mkdir -p "${CLONE_BASE}"

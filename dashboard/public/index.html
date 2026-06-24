@@ -87,6 +87,7 @@ const stageBadge = {
   "plan-ready": ["질문 대기", "bg-sky-500/20 text-sky-300 border-sky-500/40"],
   "awaiting-answer": ["답변 대기", "bg-violet-500/20 text-violet-300 border-violet-500/40"],
   "build-ready": ["개발 대기", "bg-amber-500/20 text-amber-300 border-amber-500/40"],
+  "processing": ["처리 중", "bg-indigo-500/20 text-indigo-300 border-indigo-500/40 animate-pulse"],
   "failed": ["실패", "bg-rose-500/20 text-rose-300 border-rose-500/40"],
   "done": ["완료", "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"],
 };
@@ -345,7 +346,8 @@ function ProjectCard({ proj, onDeleted, flash }) {
             <thead><tr className="text-slate-400 text-left border-b border-slate-700"><th className="py-2 w-28">키</th><th>요약</th><th className="w-40">상태</th><th className="w-36">단계</th></tr></thead>
             <tbody>
               {cards.map((c) => {
-                const [label, cls] = stageBadge[c.stage] || ["-", ""];
+                const [baseLabel, cls] = stageBadge[c.stage] || ["-", ""];
+                const label = (c.stage === "processing" && c.proc) ? `처리 중(${c.proc})` : baseLabel;
                 const open = expandedKey === c.key;
                 return (
                   <React.Fragment key={c.key}>

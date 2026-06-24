@@ -332,8 +332,13 @@ app.get("/api/cards", async (req, res) => {
     const { cfg, cred } = resolveProject(req);
     const proj = cfg.projectKey ? ` AND project = "${cfg.projectKey}"` : "";
     const data = await jiraSearch(`assignee = currentUser() AND ${triggerClause(cfg)}${proj} ORDER BY key ASC`, cfg, cred);
-    const classify = (it) => {
-      if (it.status === cfg.doneStatus) return "done";
+    const stateDir = path.join(cfg.cloneBase || path.join(cfg.workDir || SCRIPTS_DIR, "repos"), ".state");
+    // 처리 중 여부: run-jira-claude.sh 가 만든 카드별 락(<KEY>.lock) 존재 + phase 파일
+    const procInfo = (key) => {
+      if (!fs.existsSync(path.join(stateDir, `${key}.lock`))) return null;
+      try { return fs.readFileSync(path.join(stateDir, `${key}.lock.phase`), "utf8").trim() || "run"; } catch { return "run"; }
+    };
+    const labelStage = (it) => {
       if (it.labels.includes(cfg.failedLabel)) return "failed";
       const planned = it.labels.includes(cfg.plannedLabel), answered = it.labels.includes(cfg.answeredLabel);
       if (planned && answered) return "build-ready";
@@ -342,7 +347,12 @@ app.get("/api/cards", async (req, res) => {
     };
     const issues = (data.issues || []).map((i) => {
       const it = { key: i.key, summary: i.fields.summary, status: i.fields.status?.name, labels: i.fields.labels || [], url: `https://${cfg.jiraSite}/browse/${i.key}` };
-      return { ...it, stage: classify(it) };
+      const proc = procInfo(i.key);
+      let stage;
+      if (it.status === cfg.doneStatus) stage = "done";        // 완료 상태가 최우선
+      else if (proc) stage = "processing";                     // 처리 중(락 존재)
+      else stage = labelStage(it);
+      return { ...it, stage, proc };
     });
     res.json({ ok: true, issues });
   } catch (e) { fail(res, e); }
