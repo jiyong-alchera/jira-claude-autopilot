@@ -100,6 +100,58 @@ const resultBadge = {
   "failed": ["실패", "bg-rose-500/20 text-rose-300 border-rose-500/40"],
 };
 
+// 실행에 필요한 설치 요소·리소스 안내 모달
+function InfoModal({ onClose }) {
+  const H = ({ children }) => <h3 className="text-sm font-semibold text-indigo-300 mt-4 mb-1">{children}</h3>;
+  const Li = ({ children }) => <li className="text-sm text-slate-300 leading-relaxed">{children}</li>;
+  const Code = ({ children }) => <code className="bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-xs">{children}</code>;
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center p-4 overflow-auto" onClick={onClose}>
+      <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-2xl w-full p-6 my-8 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-lg font-semibold">실행에 필요한 설치 요소 · 리소스</h2>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 border border-slate-600 hover:text-rose-300 hover:border-rose-500/50 hover:bg-rose-500/10 transition">✕</button>
+        </div>
+        <p className="text-xs text-slate-500 mb-2">이 대시보드는 로컬 전용입니다. 토큰은 외부로 전송되지 않습니다.</p>
+
+        <H>① 필수 설치 (런타임 · CLI)</H>
+        <ul className="list-disc pl-5 space-y-1">
+          <Li><b>Node.js ≥ 18</b> — 대시보드 서버 + 루프 순회(run-cycle) + claude 실행 전사 렌더러</Li>
+          <Li><b>Claude Code CLI</b>(<Code>claude</Code>) — 설치+로그인, 그리고 <Code>claude mcp add atlassian</Code> 인증(루프 내 Jira 코멘트/상태 작업)</Li>
+          <Li><b>GitHub CLI</b>(<Code>gh</Code>) — <Code>gh auth login</Code> (repo clone/push/PR)</Li>
+          <Li><b>git</b> — 대상 repo clone/커밋</Li>
+        </ul>
+
+        <H>② 자격증명 (프로젝트별 · 자격증명 섹션에서 입력)</H>
+        <ul className="list-disc pl-5 space-y-1">
+          <Li><b>Atlassian 이메일 + API 토큰</b> — 카드 조회·탐지·등록·답변(필수). <Code>id.atlassian.com</Code> 에서 발급</Li>
+          <Li><b>Anthropic API Key</b> — 루프 내 claude 인증(없으면 로컬 claude 로그인 폴백)</Li>
+          <Li><b>GitHub Token</b> — clone/push/PR(없으면 로컬 gh auth 폴백, repo 쓰기 권한 필요)</Li>
+          <Li><b>Slack Webhook</b> — 처리 완료/실패 알림(선택)</Li>
+        </ul>
+
+        <H>③ 실행 방법</H>
+        <ul className="list-disc pl-5 space-y-1">
+          <Li><Code>cd dashboard && npm install</Code> 후 <Code>npm run dev</Code>(핫리로드) 또는 <Code>npm start</Code></Li>
+          <Li>프로젝트 추가 → 자격증명·Git Repositories·(.env) 설정 → 루프 "시작" 또는 카드 "지금 실행"</Li>
+        </ul>
+
+        <H>④ 생성·사용 리소스 (로컬, git 제외)</H>
+        <ul className="list-disc pl-5 space-y-1">
+          <Li><Code>projects.json</Code> / <Code>project-credentials.json</Code> — 프로젝트 설정·토큰(권한 600)</Li>
+          <Li><Code>work-*.env</Code> — repo로 복사할 env, <Code>repos/</Code> — 카드별 clone</Li>
+          <Li><Code>loop-*.log</Code> / <Code>history.jsonl</Code> / <Code>claude-logs/</Code> — 로그·이력, <Code>loop-*.pid/.ver</Code> — 루프 상태</Li>
+        </ul>
+
+        <H>⑤ 동작 흐름</H>
+        <p className="text-sm text-slate-300 leading-relaxed">plan(질문 코멘트+claude-planned) → 담당자 답변+claude-answered → build(개발·테스트·PR·완료요약·상태전환). 루프가 주기마다 모든 프로젝트를 순회하며, 단건/전체 즉시 실행과 PR 리뷰 반영(rework)도 지원합니다.</p>
+
+        <div className="mt-5 text-right"><Btn onClick={onClose}>닫기</Btn></div>
+      </div>
+    </div>
+  );
+}
+
 // =================== 프로젝트 1개 (설정·자격증명·.env·카드 등록·카드 상태) ===================
 function ProjectCard({ proj, onDeleted, flash }) {
   const PID = proj.id;
@@ -506,6 +558,7 @@ function App() {
   const [logs, setLogs] = useState({ plan: "", build: "" });
   const [history, setHistory] = useState([]);
   const [toast, setToast] = useState("");
+  const [infoOpen, setInfoOpen] = useState(false);
   const flash = (m) => { setToast(m); setTimeout(() => setToast(""), 2500); };
 
   const loadProjects = async () => { const r = await api.get("/api/projects"); setProjects(r.projects || []); };
@@ -529,9 +582,14 @@ function App() {
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-8">
-      <h1 className="text-2xl font-bold mb-1">Jira → Claude 자동화 대시보드</h1>
+      <h1 className="text-2xl font-bold mb-1 flex items-center gap-2">
+        Jira → Claude 자동화 대시보드
+        <button onClick={() => setInfoOpen(true)} title="설치 요소·리소스 안내"
+          className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-700 hover:bg-indigo-600 text-slate-200 text-sm font-bold transition">i</button>
+      </h1>
       <p className="text-slate-400 text-sm mb-6">여러 프로젝트를 동시에 운용합니다. 루프는 한 주기마다 모든 프로젝트를 순회합니다.</p>
       {toast && <div className="fixed top-4 right-4 bg-indigo-600 px-4 py-2 rounded-lg text-sm shadow-lg z-50">{toast}</div>}
+      {infoOpen && <InfoModal onClose={() => setInfoOpen(false)} />}
 
       {/* 루프 제어 (전역) */}
       <Section title="루프 제어 (전 프로젝트 공통)" right={<Btn color="slate" onClick={loadProjects}>새로고침</Btn>}>
