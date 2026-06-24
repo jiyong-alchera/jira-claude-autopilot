@@ -18,8 +18,9 @@ kyb-api-*/
 # 처리 이력 (런타임 생성)
 history.jsonl
 
-# 루프 pidfile (런타임 생성)
+# 루프 pidfile/버전마커 (런타임 생성)
 loop-*.pid
+loop-*.ver
 
 # claude 카드별 실행 로그 (런타임 생성)
 claude-logs/

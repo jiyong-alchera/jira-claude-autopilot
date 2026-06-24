@@ -89,14 +89,18 @@ const migratedId = store.migrateIfNeeded();
 if (migratedId) console.log(`  마이그레이션: 기존 설정을 프로젝트 '${migratedId}' 로 가져왔습니다.`);
 
 // ----- 실행 중인 루프 프로세스 추적 (pidfile 기반) -----
+// 루프 동작이 바뀌면 이 버전을 올린다. 시작 시 버전이 다른(=구버전) 루프는 자동 재시작.
+const LOOP_VERSION = "2";  // 2: 멀티 프로젝트(run-cycle.js) 순회
 const loops = { plan: null, build: null };
 const pidFile = (type) => path.join(SCRIPTS_DIR, `loop-${type}.pid`);
+const verFile = (type) => path.join(SCRIPTS_DIR, `loop-${type}.ver`);
 function readPid(type) {
   try { const pid = parseInt(fs.readFileSync(pidFile(type), "utf8").trim(), 10); return Number.isInteger(pid) ? pid : null; }
   catch { return null; }
 }
+function readVer(type) { try { return fs.readFileSync(verFile(type), "utf8").trim(); } catch { return null; } }
 function isAlive(pid) { if (!pid) return false; try { process.kill(pid, 0); return true; } catch { return false; } }
-function clearPid(type) { try { fs.unlinkSync(pidFile(type)); } catch {} }
+function clearPid(type) { try { fs.unlinkSync(pidFile(type)); } catch {} try { fs.unlinkSync(verFile(type)); } catch {} }
 
 // 프로젝트별 env (run-jira-claude.sh 에 주입). id 미지정 시 첫 프로젝트.
 function scriptEnv(id) {
@@ -143,6 +147,7 @@ function startLoop(type) {
   if (!fs.existsSync(script)) return { ok: false, message: `스크립트를 찾을 수 없습니다: ${script}` };
   const proc = spawn("bash", [script], { cwd: SCRIPTS_DIR, env: { ...process.env, DASHBOARD_URL: `http://localhost:${PORT}` }, detached: true, stdio: "ignore" });
   fs.writeFileSync(pidFile(type), String(proc.pid));
+  fs.writeFileSync(verFile(type), LOOP_VERSION);   // 버전 마커(구버전 자동 교체 판단용)
   loops[type] = { proc };
   proc.on("exit", () => {
     if (loops[type] && loops[type].proc === proc) loops[type] = null;
@@ -576,6 +581,16 @@ app.listen(PORT, () => {
   console.log(`\n  Jira→Claude 대시보드: http://localhost:${PORT}`);
   console.log(`  스크립트 위치: ${SCRIPTS_DIR}`);
   console.log(`  프로젝트: ${listProjects().length}개`);
+  // 구버전 루프 자동 교체: 실행 중이지만 버전 마커가 현재와 다르면(=구버전/마커 없음) 신버전으로 재시작
+  for (const t of ["plan", "build"]) {
+    const pid = readPid(t);
+    if (isAlive(pid) && readVer(t) !== LOOP_VERSION) {
+      console.log(`  구버전 ${t} 루프(pid ${pid}, ver ${readVer(t) || "없음"}) 감지 → 신버전(v${LOOP_VERSION})으로 재시작`);
+      stopLoop(t);
+      const r = startLoop(t);
+      if (r.ok) console.log(`  → ${t} 루프 재시작 (pid ${r.pid})`);
+    }
+  }
   const st = loopStatus();
   for (const t of ["plan", "build"]) if (st[t].running) console.log(`  복구: ${t} 루프 실행 중 (pid ${st[t].pid})`);
   console.log("");

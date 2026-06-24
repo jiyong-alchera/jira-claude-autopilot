@@ -372,6 +372,7 @@ tail -f loop-plan.log loop-build.log
   - **pm2**: `cd dashboard && pm2 start server.js --name jira-claude-dashboard && pm2 save && pm2 startup`
   - **launchd(macOS)**: `~/Library/LaunchAgents/com.jira-claude.dashboard.plist` 에 `ProgramArguments`로 `node <repo>/dashboard/server.js`, `RunAtLoad=true`, `KeepAlive=true` 를 지정하고 `launchctl load` 합니다.
   - 백엔드가 다시 뜨면 pidfile 로 루프 상태를 복구하므로, 대시보드 상태가 실제 프로세스와 항상 일치합니다.
+- **구버전 루프 자동 교체**: 루프 시작 시 `loop-<type>.ver` 에 `LOOP_VERSION` 을 기록한다. 백엔드가 시작될 때 실행 중인 루프의 버전 마커가 현재와 다르거나 없으면(=구버전 프로세스), 그 루프를 종료하고 신버전으로 자동 재시작한다. (코드 업데이트 후 옛 루프가 계속 도는 문제 방지)
 
 ---
 
