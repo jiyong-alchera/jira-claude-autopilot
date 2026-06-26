@@ -495,7 +495,7 @@ function ProjectCard({ proj, onDeleted, flash }) {
                                 <Btn color="indigo" onClick={() => reworkCard(c.key)}>리뷰 반영 실행</Btn>
                               </div>
                               <textarea value={reworkMemo} onChange={(e) => setReworkMemo(e.target.value)} spellCheck={false}
-                                placeholder="(선택) 고칠 내용을 적으면 Jira 코멘트로 남기고 반영합니다. 비우면 GitHub PR 리뷰·기존 코멘트만 보고 반영."
+                                placeholder="(선택) 고칠 내용을 적으면 PR 코멘트로 남기고 반영합니다. 비우면 GitHub PR 리뷰·기존 코멘트만 보고 반영."
                                 className="w-full h-20 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
                             </div>
                             {/* PR 병합(rebase) */}

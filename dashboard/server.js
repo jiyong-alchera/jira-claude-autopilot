@@ -267,6 +267,22 @@ async function mergeRepoPRs(repo, key, cred) {
   }
   return { repo: repo.name, merged, errors };
 }
+// 카드의 열린 PR 들에 코멘트 작성(gh pr comment) — 리뷰 반영 요청 전달용
+async function commentCardPRs(key, repos, body, cred) {
+  const posted = [], errors = [];
+  for (const repo of repos) {
+    const or = ownerRepo(repo.url);
+    if (!or) { errors.push(`${repo.name}: url 파싱 실패`); continue; }
+    const list = await gh(["pr", "list", "--repo", or, "--search", key, "--state", "open", "--json", "number,url"], cred);
+    let prs = []; try { prs = JSON.parse(list.stdout || "[]"); } catch {}
+    if (!list.ok) { errors.push(`${repo.name}: ${(list.stderr || "").slice(0, 120)}`); continue; }
+    for (const pr of prs) {
+      const r = await gh(["pr", "comment", String(pr.number), "--repo", or, "--body", body], cred);
+      if (r.ok) posted.push(pr.url); else errors.push(`${repo.name} #${pr.number}: ${(r.stderr || "").trim().slice(0, 120)}`);
+    }
+  }
+  return { posted, errors };
+}
 // 이슈를 완료 상태로 전환(doneStatus 이름 우선, 없으면 Done 카테고리 transition)
 async function transitionToDone(key, cfg, cred) {
   const t = await jiraReq("GET", `/rest/api/3/issue/${encodeURIComponent(key)}/transitions`, null, cfg, cred);
@@ -384,17 +400,19 @@ app.post("/api/cards/:key/run", async (req, res) => {
   if (!["plan", "build"].includes(phase)) return res.status(400).json({ ok: false, message: "phase 는 plan|build" });
   try {
     const { id, cfg, cred } = resolveProject(req);
-    // rework: 메모가 있으면 Jira 코멘트로 먼저 남김(반영 요청)
-    if (rework && String(b.memo || "").trim()) {
-      try { await jiraReq("POST", `/rest/api/3/issue/${encodeURIComponent(key)}/comment`, { body: toADF(`[리뷰 반영 요청]\n${b.memo}`) }, cfg, cred); }
-      catch (e) { return res.json({ ok: false, message: "메모 코멘트 작성 실패: " + e.message }); }
-    }
-    let reposLines;
+    let reposLines = null, repos = [];
     try {
       const issue = await jiraReq("GET", `/rest/api/3/issue/${encodeURIComponent(key)}?fields=labels`, null, cfg, cred);
+      repos = cardRepos(cfg, (issue.fields && issue.fields.labels) || []);
       const cardEnv = await resolveCardEnv(key, cfg, cred);   // 카드 전용 env 첨부 → 있으면 우선
-      reposLines = reposToLines(cfg, cardRepos(cfg, (issue.fields && issue.fields.labels) || []), cardEnv);
+      reposLines = reposToLines(cfg, repos, cardEnv);
     } catch { reposLines = null; } // 라벨 조회 실패 시 scriptEnv 기본(전체 repo) 사용
+    // rework: 메모가 있으면 PR 코멘트로 남김(반영 요청) — claude 가 PR 코멘트를 읽어 반영
+    if (rework && String(b.memo || "").trim()) {
+      const target = repos.length ? repos : cardRepos(cfg, []);
+      const { posted, errors } = await commentCardPRs(key, target, `[리뷰 반영 요청]\n${b.memo}`, cred);
+      if (!posted.length) return res.json({ ok: false, message: "PR 코멘트 실패(열린 PR 없음/권한): " + (errors[0] || "") });
+    }
     res.json(runCard(key, phase, new Date().toISOString(), id, reposLines, rework));
   } catch (e) { fail(res, e); }
 });
