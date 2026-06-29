@@ -9,6 +9,8 @@ dashboard/project-credentials.json
 
 # clone 된 작업 디렉토리 (대상 repo들이 모이는 곳)
 repos/
+# 카드 전용 env (로컬 전용, 런타임 생성 — <KEY>.env)
+card-envs/
 # (구버전 호환) 과거 평면 clone 디렉토리
 kyb-api/
 kyb-api-*/

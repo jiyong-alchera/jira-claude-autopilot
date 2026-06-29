@@ -53,6 +53,7 @@ const DEFAULT_CONFIG = {
   envPath: "",                                  // 비우면 <workDir>/work-<id>.env 사용
   envDest: "",                                  // repo 내 복사 대상 상대경로(비우면 루트). 예: src/main/resources/application-private.properties
   cloneBase: path.join(SCRIPTS_DIR, "repos"),
+  cardEnvDir: "",                               // 카드 전용 env 보관 디렉토리(비우면 <workDir>/card-envs)
 };
 
 // ----- 순수 로직 + 프로젝트 스토어 (단위 테스트 대상은 lib.js 로 분리) -----
@@ -61,11 +62,9 @@ const { slugify, triggerClause, detectJql, adfToText, toADF, buildReplyADF, mask
 // repo 별 env 파일 경로(repo 전용 env 만 사용; 없으면 미복사 — run-jira 가 -f 로 확인)
 function repoEnvFile(cfg, repoName) { return path.join(cfg.workDir || SCRIPTS_DIR, `work-${cfg.id}-${repoName}.env`); }
 function repoEnvSrc(cfg, repoName) { return repoEnvFile(cfg, repoName); }
-// 카드 전용 env 첨부 파일명 + 다운로드 보관 위치(로컬, gitignore)
-const CARD_ENV_NAME = "claude.env";
-const ENV_KEY_PATH = path.join(SCRIPTS_DIR, ".env-key");   // AES 키(로컬 전용, gitignore)
-const envKey = () => lib.loadOrCreateEnvKey(ENV_KEY_PATH);
-function cardEnvLocal(cfg, key) { return path.join(cfg.cloneBase || path.join(cfg.workDir || SCRIPTS_DIR, "repos"), ".state", `${key}.env`); }
+// 카드 전용 env 보관 위치(로컬 전용, gitignore). Jira 첨부 없이 이 디렉토리에서만 읽고 쓴다.
+function cardEnvDir(cfg) { return cfg.cardEnvDir || path.join(cfg.workDir || SCRIPTS_DIR, "card-envs"); }
+function cardEnvLocal(cfg, key) { return path.join(cardEnvDir(cfg), `${key}.env`); }
 // run-jira-claude.sh 에 넘길 줄 형식: name<US>url<US>baseBranch<US>envSrc<US>envDest (US=\x1f, 빈 필드 보존)
 // envSrcOverride 가 있으면(=카드 전용 env) 모든 repo 의 envSrc 로 사용
 const reposToLines = (cfg, repos, envSrcOverride) => (repos || []).map((r) =>
@@ -293,21 +292,10 @@ async function transitionToDone(key, cfg, cred) {
   await jiraReq("POST", `/rest/api/3/issue/${encodeURIComponent(key)}/transitions`, { transition: { id: tr.id } }, cfg, cred);
   return tr.to.name;
 }
-// 카드의 claude.env 첨부를 내려받아 로컬(.state/<KEY>.env)에 저장하고 경로 반환(없으면 null)
-async function resolveCardEnv(key, cfg, cred) {
-  try {
-    const issue = await jiraReq("GET", `/rest/api/3/issue/${encodeURIComponent(key)}?fields=attachment`, null, cfg, cred);
-    const envAtts = ((issue.fields && issue.fields.attachment) || []).filter((a) => a.filename === CARD_ENV_NAME);
-    if (!envAtts.length) return null;
-    const att = envAtts[envAtts.length - 1]; // 여러 번 올렸으면 최신
-    const r = await fetch(att.content, { headers: { Authorization: `Basic ${jiraAuth(cred)}` } });
-    if (!r.ok) return null;
-    const txt = lib.decryptEnv(await r.text(), envKey());   // 암호문이면 복호화, 평문이면 그대로
-    const p = cardEnvLocal(cfg, key);
-    fs.mkdirSync(path.dirname(p), { recursive: true });
-    fs.writeFileSync(p, txt, { mode: 0o600 });
-    return p;
-  } catch { return null; }
+// 카드 전용 env: 로컬 card-envs/<KEY>.env 만 읽는다(Jira 폴백 없음). 없으면 null → repo 전용 env 사용.
+function resolveCardEnv(key, cfg) {
+  const p = cardEnvLocal(cfg, key);
+  return fs.existsSync(p) ? p : null;
 }
 async function jiraAttach(issueKey, filename, dataBase64, contentType, cfg, cred) {
   const auth = jiraAuth(cred);
@@ -404,7 +392,7 @@ app.post("/api/cards/:key/run", async (req, res) => {
     try {
       const issue = await jiraReq("GET", `/rest/api/3/issue/${encodeURIComponent(key)}?fields=labels`, null, cfg, cred);
       repos = cardRepos(cfg, (issue.fields && issue.fields.labels) || []);
-      const cardEnv = await resolveCardEnv(key, cfg, cred);   // 카드 전용 env 첨부 → 있으면 우선
+      const cardEnv = resolveCardEnv(key, cfg);   // 카드 전용 env(로컬) → 있으면 우선
       reposLines = reposToLines(cfg, repos, cardEnv);
     } catch { reposLines = null; } // 라벨 조회 실패 시 scriptEnv 기본(전체 repo) 사용
     // rework: 메모가 있으면 PR 코멘트로 남김(반영 요청) — claude 가 PR 코멘트를 읽어 반영
@@ -607,13 +595,14 @@ app.post("/api/jira/issue", async (req, res) => {
       try { await jiraAttach(created.key, a.filename, a.dataBase64, a.contentType, cfg, cred); attached.push(a.filename || "file"); }
       catch (e) { attachErrors.push(`${a.filename || "file"}: ${e.message}`); }
     }
-    // 카드 전용 env: AES 암호화한 암호문을 claude.env 로 카드에 첨부(빌드 시 로컬 키로 복호화해 clone 에 복사)
+    // 카드 전용 env: Jira 첨부 없이 로컬 card-envs/<KEY>.env 에 저장(빌드 시 그대로 읽어 각 repo 의 envDest 로 복사)
     if (String(b.env || "").trim()) {
       try {
-        const enc = lib.encryptEnv(b.env, envKey());
-        await jiraAttach(created.key, CARD_ENV_NAME, Buffer.from(enc, "utf8").toString("base64"), "text/plain", cfg, cred);
-        attached.push(CARD_ENV_NAME);
-      } catch (e) { attachErrors.push(`${CARD_ENV_NAME}: ${e.message}`); }
+        const p = cardEnvLocal(cfg, created.key);
+        fs.mkdirSync(path.dirname(p), { recursive: true });
+        fs.writeFileSync(p, b.env, { mode: 0o600 });
+        attached.push(`card-envs/${created.key}.env`);
+      } catch (e) { attachErrors.push(`card env: ${e.message}`); }
     }
     res.json({ ok: true, key: created.key, url: `https://${cfg.jiraSite}/browse/${created.key}`, attached, attachErrors, note: autoNote });
   } catch (e) { fail(res, e); }

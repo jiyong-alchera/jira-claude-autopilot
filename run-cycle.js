@@ -29,27 +29,14 @@ const reposToLines = (cfg, repos, envSrcOverride) => (repos || []).map((r) =>
   [r.name, r.url, r.baseBranch || "main", envSrcOverride || repoEnvSrc(cfg, r.name), r.envDest || cfg.envDest || ""].join("\x1f")
 ).join("\n");
 
-// 카드의 claude.env 첨부를 내려받아 로컬(.state/<KEY>.env)에 저장하고 경로 반환(없으면 null)
-const CARD_ENV_NAME = "claude.env";
-async function resolveCardEnv(cfg, cred, key) {
-  if (!cred || !cred.atlassianEmail || !cred.atlassianToken || !cfg.jiraSite) return null;
-  const auth = Buffer.from(`${cred.atlassianEmail}:${cred.atlassianToken}`).toString("base64");
-  try {
-    const r = await fetch(`https://${cfg.jiraSite}/rest/api/3/issue/${encodeURIComponent(key)}?fields=attachment`, { headers: { Authorization: `Basic ${auth}`, Accept: "application/json" }, signal: AbortSignal.timeout(15000) });
-    if (!r.ok) return null;
-    const d = await r.json();
-    const envAtts = ((d.fields && d.fields.attachment) || []).filter((a) => a.filename === CARD_ENV_NAME);
-    if (!envAtts.length) return null;
-    const att = envAtts[envAtts.length - 1];
-    const rr = await fetch(att.content, { headers: { Authorization: `Basic ${auth}` }, signal: AbortSignal.timeout(20000) });
-    if (!rr.ok) return null;
-    const txt = lib.decryptEnv(await rr.text(), lib.loadOrCreateEnvKey(path.join(SELF, ".env-key")));   // 암호문이면 복호화
-    const base = cfg.cloneBase || path.join(cfg.workDir || SELF, "repos");
-    const p = path.join(base, ".state", `${key}.env`);
-    fs.mkdirSync(path.dirname(p), { recursive: true });
-    fs.writeFileSync(p, txt, { mode: 0o600 });
-    return p;
-  } catch { return null; }
+// 카드 전용 env: 로컬 card-envs/<KEY>.env 만 읽는다(Jira 폴백 없음). 없으면 null → repo 전용 env 사용.
+function cardEnvLocal(cfg, key) {
+  const dir = cfg.cardEnvDir || path.join(cfg.workDir || SELF, "card-envs");
+  return path.join(dir, `${key}.env`);
+}
+function resolveCardEnv(cfg, key) {
+  const p = cardEnvLocal(cfg, key);
+  return fs.existsSync(p) ? p : null;
 }
 
 // 카드 라벨 조회(프로젝트 자격증명) → 대상 repo 결정용
@@ -65,7 +52,7 @@ async function fetchLabels(cfg, cred, key) {
 const DEFAULTS = {
   workDir: SELF, baseBranch: "main", triggerMode: "label", triggerLabel: "claude-work", triggerText: "claude-work",
   doneStatus: "DEV COMPLETED", plannedLabel: "claude-planned", answeredLabel: "claude-answered", failedLabel: "claude-failed", prOpenLabel: "claude-pr",
-  maxRetries: 3, maxParallel: 3, intervalSeconds: 3600, envMode: "content", envPath: "", envDest: "", cloneBase: path.join(SELF, "repos"),
+  maxRetries: 3, maxParallel: 3, intervalSeconds: 3600, envMode: "content", envPath: "", envDest: "", cardEnvDir: "", cloneBase: path.join(SELF, "repos"),
   testCmd: "", buildCmd: "", repoUrl: "", jiraSite: "", projectKey: "", assigneeEmail: "", assigneeName: "",
 };
 
@@ -123,7 +110,7 @@ async function detect(p, env) {
 async function runCard(key, env, cfg, cred) {
   const e = { ...env };
   try {
-    const cardEnv = await resolveCardEnv(cfg, cred, key);   // 카드 전용 env 첨부 우선
+    const cardEnv = resolveCardEnv(cfg, key);   // 카드 전용 env(로컬) 우선
     e.CARD_REPOS = reposToLines(cfg, lib.cardRepos(cfg, await fetchLabels(cfg, cred, key)), cardEnv);
   } catch { /* 기본(전체) 사용 */ }
   return new Promise((resolve) => {

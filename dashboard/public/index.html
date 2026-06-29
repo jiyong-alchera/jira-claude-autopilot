@@ -355,7 +355,7 @@ function ProjectCard({ proj, onDeleted, flash }) {
             </div>
           );
         })}
-        <p className="text-xs text-slate-500 mt-1">name 은 카드 라벨(repo_&lt;name&gt;)에 쓰이니 짧은 슬러그 권장. repo 마다 'env 대상경로'와 'env' 내용을 따로 지정 가능. env 우선순위: 카드 전용(claude.env) &gt; repo 전용.</p>
+        <p className="text-xs text-slate-500 mt-1">name 은 카드 라벨(repo_&lt;name&gt;)에 쓰이니 짧은 슬러그 권장. repo 마다 'env 대상경로'와 'env' 내용을 따로 지정 가능. env 우선순위: 카드 전용(card-envs/&lt;KEY&gt;.env) &gt; repo 전용.</p>
       </div>
 
       {/* 자격증명 (프로젝트별) */}
@@ -442,11 +442,11 @@ function ProjectCard({ proj, onDeleted, flash }) {
           </div>
         )}
         <label className="block mb-3">
-          <span className="text-sm text-slate-400">카드 전용 env (선택) — AES 암호화하여 <code className="text-xs">claude.env</code> 로 첨부, build 시 로컬 키로 복호화해 각 repo 의 envDest 로 복사</span>
+          <span className="text-sm text-slate-400">카드 전용 env (선택) — 로컬 <code className="text-xs">card-envs/&lt;KEY&gt;.env</code> 에 저장(Jira 첨부 안 함), build 시 그대로 읽어 각 repo 의 envDest 로 복사</span>
           <textarea value={newCard.env} onChange={(e) => setNewCard({ ...newCard, env: e.target.value })} spellCheck={false}
             placeholder="KEY=VALUE … (이 카드 작업에만 쓰이는 env. 비우면 repo 전용 env 사용)"
             className="mt-1 w-full h-24 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-indigo-400" />
-          {newCard.env.trim() && <span className="text-[11px] text-emerald-300/80">🔒 AES-256-GCM 으로 암호화되어 첨부됩니다(호스트의 .env-key 로만 복호화).</span>}
+          {newCard.env.trim() && <span className="text-[11px] text-emerald-300/80">💾 호스트 로컬 <code className="text-xs">card-envs/</code> 에만 저장됩니다(gitignore, 0600). Jira 로 업로드되지 않습니다.</span>}
         </label>
         <div className="flex items-center gap-5 mb-3 text-sm text-slate-300">
           <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={newCard.addTriggerLabel} onChange={(e) => setNewCard({ ...newCard, addTriggerLabel: e.target.checked })} /><span>{config.triggerLabel || "claude-work"} 라벨 추가</span></label>
