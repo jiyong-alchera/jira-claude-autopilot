@@ -39,6 +39,37 @@ function resolveCardEnv(cfg, key) {
   return fs.existsSync(p) ? p : null;
 }
 
+// 카드 첨부 이미지를 로컬로 내려받아 경로 목록 반환 → Claude 가 Read 도구로 인식하게 함(추론에 이미지 반영).
+const MAX_CARD_IMAGES = 10;
+async function downloadCardImages(cfg, cred, key) {
+  if (!cred || !cred.atlassianEmail || !cred.atlassianToken || !cfg.jiraSite) return [];
+  const auth = Buffer.from(`${cred.atlassianEmail}:${cred.atlassianToken}`).toString("base64");
+  try {
+    const r = await fetch(`https://${cfg.jiraSite}/rest/api/3/issue/${encodeURIComponent(key)}?fields=attachment`, { headers: { Authorization: `Basic ${auth}`, Accept: "application/json" }, signal: AbortSignal.timeout(15000) });
+    if (!r.ok) return [];
+    const d = await r.json();
+    let imgs = ((d.fields && d.fields.attachment) || []).filter((a) => String(a.mimeType || "").startsWith("image/"));
+    if (imgs.length > MAX_CARD_IMAGES) { log(`[${key}] 이미지 ${imgs.length}장 중 ${MAX_CARD_IMAGES}장만 인식(상한)`); imgs = imgs.slice(0, MAX_CARD_IMAGES); }
+    const base = cfg.cloneBase || path.join(cfg.workDir || SELF, "repos");
+    const dir = path.join(base, ".state", `${key}.images`);
+    fs.mkdirSync(dir, { recursive: true });
+    const paths = [];
+    for (const a of imgs) {
+      try {
+        let up = await fetch(`https://${cfg.jiraSite}/rest/api/3/attachment/content/${a.id}`, { headers: { Authorization: `Basic ${auth}` }, redirect: "manual", signal: AbortSignal.timeout(30000) });
+        const loc = up.headers.get("location");
+        if (up.status >= 300 && up.status < 400 && loc) up = await fetch(loc, { signal: AbortSignal.timeout(30000) });
+        if (!up.ok) continue;
+        const safe = String(a.filename || `att-${a.id}`).replace(/[^\w.\-]/g, "_");
+        const p = path.join(dir, `${a.id}-${safe}`);
+        fs.writeFileSync(p, Buffer.from(await up.arrayBuffer()));
+        paths.push(p);
+      } catch { /* 개별 실패는 건너뜀 */ }
+    }
+    return paths;
+  } catch { return []; }
+}
+
 // 카드 라벨 조회(프로젝트 자격증명) → 대상 repo 결정용
 async function fetchLabels(cfg, cred, key) {
   if (!cred || !cred.atlassianEmail || !cred.atlassianToken || !cfg.jiraSite) return [];
@@ -113,6 +144,10 @@ async function runCard(key, env, cfg, cred) {
     const cardEnv = resolveCardEnv(cfg, key);   // 카드 전용 env(로컬) 우선
     e.CARD_REPOS = reposToLines(cfg, lib.cardRepos(cfg, await fetchLabels(cfg, cred, key)), cardEnv);
   } catch { /* 기본(전체) 사용 */ }
+  try {
+    const imgs = await downloadCardImages(cfg, cred, key);   // 카드 이미지 → Claude Read 인식용
+    if (imgs.length) { e.CARD_IMAGES = imgs.join("\n"); log(`[${key}] 카드 이미지 ${imgs.length}장 첨부(추론 인식)`); }
+  } catch { /* 이미지 없이 진행 */ }
   return new Promise((resolve) => {
     const c = spawn("bash", [path.join(SELF, "run-jira-claude.sh"), key, phase], { env: e, stdio: "inherit" });
     c.on("close", () => resolve());
