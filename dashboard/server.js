@@ -265,17 +265,17 @@ function gh(args, cred) {
 async function mergeRepoPRs(repo, key, cred) {
   const or = ownerRepo(repo.url);
   if (!or) return { repo: repo.name, merged: [], errors: ["repo url 파싱 실패"] };
-  const list = await gh(["pr", "list", "--repo", or, "--search", key, "--state", "all", "--json", "number,url,state"], cred);
+  const list = await gh(["pr", "list", "--repo", or, "--search", key, "--state", "all", "--json", "number,url,state,headRefName"], cred);
   let prs = []; try { prs = JSON.parse(list.stdout || "[]"); } catch {}
   if (!prs.length) return { repo: repo.name, merged: [], errors: list.ok ? ["PR 없음"] : [(list.stderr || "").slice(0, 160)] };
-  const merged = [], errors = [];
+  const merged = [], branches = [], errors = [];
   for (const pr of prs) {
-    if (pr.state === "MERGED") { merged.push(pr.url); continue; }   // GitHub 에서 이미 병합됨 → 인정
+    if (pr.state === "MERGED") { merged.push(pr.url); branches.push(pr.headRefName || ""); continue; }   // GitHub 에서 이미 병합됨 → 인정
     if (pr.state !== "OPEN") continue;                              // CLOSED 등은 무시
     const r = await gh(["pr", "merge", String(pr.number), "--repo", or, "--rebase", "--delete-branch"], cred);
-    if (r.ok) merged.push(pr.url); else errors.push(`#${pr.number}: ${(r.stderr || "").trim().slice(0, 160)}`);
+    if (r.ok) { merged.push(pr.url); branches.push(pr.headRefName || ""); } else errors.push(`#${pr.number}: ${(r.stderr || "").trim().slice(0, 160)}`);
   }
-  return { repo: repo.name, merged, errors };
+  return { repo: repo.name, merged, branches, errors };
 }
 // 카드의 열린 PR 들에 코멘트 작성(gh pr comment) — 리뷰 반영 요청 전달용
 async function commentCardPRs(key, repos, body, cred) {
@@ -476,13 +476,14 @@ app.post("/api/cards/:key/merge", async (req, res) => {
     for (const r of repos) results.push(await mergeRepoPRs(r, key, cred));
     const merged = results.reduce((n, x) => n + x.merged.length, 0);
     const prs = results.flatMap((x) => x.merged);
+    const branches = results.flatMap((x) => x.branches || []);
     const errors = results.flatMap((x) => x.errors.map((e) => `${x.repo}: ${e}`));
     let doneStatus = null;
     if (merged > 0) {
       try { doneStatus = await transitionToDone(key, cfg, cred); } catch (e) { errors.push(`상태전환: ${e.message}`); }
       // 병합 대기 라벨 제거(완료 표시 정리, best-effort)
       try { await jiraReq("PUT", `/rest/api/3/issue/${encodeURIComponent(key)}`, { update: { labels: [{ remove: cfg.prOpenLabel || "claude-pr" }] } }, cfg, cred); } catch {}
-      appendHistory(id, key, "merge", "merged", prs[0]);   // 이력에 병합 성공 기록
+      appendHistory(id, key, "merge", "merged", prs[0], branches[0] || "");   // 이력에 병합 성공 기록(PR head 브랜치 포함)
     }
     res.json({ ok: merged > 0, merged, doneStatus, errors, prs });
   } catch (e) { fail(res, e); }

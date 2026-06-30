@@ -301,7 +301,13 @@ set -e
 PR_URL=""; BRANCH_OUT=""; RESULT="failed"
 if [[ "${CLAUDE_OK}" -eq 0 ]]; then
   PR_URL="$(grep -oE 'https://github\.com/[^ )]+/pull/[0-9]+' "${CLAUDE_OUT}" | head -n1 || true)"
-  BRANCH_OUT="$(grep -oE "feature/${ISSUE_KEY}[A-Za-z0-9._/-]*" "${CLAUDE_OUT}" | head -n1 || true)"
+  # 브랜치명: PR 의 실제 head 브랜치를 우선 사용(feat/·fix/ 등 접두사 무관). 실패 시 출력에서 접두사 포괄 추출.
+  if [[ -n "${PR_URL}" ]]; then
+    BRANCH_OUT="$(gh pr view "${PR_URL}" --json headRefName --jq '.headRefName' 2>/dev/null || true)"
+  fi
+  if [[ -z "${BRANCH_OUT}" ]]; then
+    BRANCH_OUT="$(grep -oE "(feat|feature|fix|hotfix|bugfix|refactor|chore)/[A-Za-z0-9._/-]*${ISSUE_KEY}[A-Za-z0-9._/-]*" "${CLAUDE_OUT}" | head -n1 || true)"
+  fi
   if grep -q 'SKIP:' "${CLAUDE_OUT}"; then
     RESULT="skip"
   elif [[ "${PHASE}" == "build" && -z "${PR_URL}" ]]; then
