@@ -554,86 +554,104 @@ function ProjectCard({ proj, onDeleted, flash }) {
                                 <pre className="bg-black/60 border border-slate-700 rounded p-3 text-xs whitespace-pre-wrap text-slate-200 h-72 overflow-auto">{claudeLog.text || "(로그 없음)"}</pre>
                               </div>
                             )}
-                            {/* 리뷰 반영(기존 PR 갱신) */}
-                            <div className="mb-4 p-2 rounded bg-cyan-500/5 border border-cyan-500/20">
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="text-xs text-cyan-300">리뷰 반영 (기존 PR 갱신 · 새 PR 안 만듦)</span>
-                                <Btn color="indigo" onClick={() => reworkCard(c.key)}>리뷰 반영 실행</Btn>
+                            {/* ===== 📋 Jira 카드 영역 (설명·코멘트·답변) ===== */}
+                            <div className="mb-4 rounded-lg border border-sky-500/30 bg-sky-500/[0.04]">
+                              <div className="flex items-center gap-2 px-3 py-2 border-b border-sky-500/20 bg-sky-500/10 rounded-t-lg">
+                                <span className="text-[11px] font-semibold text-sky-300 uppercase tracking-wider">📋 Jira 카드</span>
+                                <span className="text-[11px] text-slate-500">설명 · 코멘트 · 답변</span>
                               </div>
-                              <textarea value={reworkMemo} onChange={(e) => setReworkMemo(e.target.value)} spellCheck={false}
-                                placeholder="(선택) 고칠 내용을 적으면 PR 코멘트로 남기고 반영합니다. 비우면 GitHub PR 리뷰·기존 코멘트만 보고 반영."
-                                className="w-full h-20 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
-                            </div>
-                            {/* PR 병합(rebase) */}
-                            <div className="mb-4 p-2 rounded bg-teal-500/5 border border-teal-500/20 flex items-center justify-between">
-                              <span className="text-xs text-teal-300">PR 병합 (rebase merge · 병합되면 카드 완료 처리)</span>
-                              <Btn color="green" onClick={() => mergeCard(c.key)}>PR 병합</Btn>
-                            </div>
-                            {/* PR 리뷰 내용(GitHub 리뷰·코멘트·인라인) */}
-                            <div className="mb-4 p-2 rounded bg-violet-500/5 border border-violet-500/20">
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="text-xs text-violet-300">PR 리뷰 (GitHub 리뷰·코멘트)</span>
-                                <Btn color="slate" onClick={() => loadReviews(c.key)}>{reviews && reviews.key === c.key && reviews.loading ? "불러오는 중…" : "리뷰 불러오기"}</Btn>
-                              </div>
-                              {reviews && reviews.key === c.key && !reviews.loading && (
-                                reviews.err ? <p className="text-xs text-rose-300">{reviews.err}</p>
-                                : reviews.prs.length === 0 ? <p className="text-xs text-slate-500">이 카드의 PR 이 없거나 리뷰 내용이 없습니다.</p>
-                                : (
-                                  <div className="space-y-3 max-h-96 overflow-auto">
-                                    {reviews.prs.map((pr, pi) => (
-                                      <div key={pi} className="bg-black/30 border border-slate-700 rounded p-2">
-                                        <div className="flex items-center justify-between mb-1 gap-2">
-                                          <a href={pr.url} target="_blank" rel="noreferrer" className="text-xs text-indigo-400 hover:underline truncate">{pr.repo} #{pr.number} · {pr.title}</a>
-                                          <span className="text-[11px] text-slate-400 whitespace-nowrap">{pr.state}{pr.branch ? ` · ${pr.branch}` : ""}</span>
-                                        </div>
-                                        {(pr.reviews.length + pr.comments.length + pr.inline.length) === 0
-                                          ? <p className="text-[11px] text-slate-500">리뷰/코멘트 없음</p>
-                                          : (
-                                            <div className="space-y-1.5">
-                                              {pr.reviews.map((rv, i) => (
-                                                <div key={`r${i}`} className="text-[11px]">
-                                                  <span className="text-slate-400">{rv.author}</span> <span className={rv.state === "APPROVED" ? "text-emerald-300" : rv.state === "CHANGES_REQUESTED" ? "text-rose-300" : "text-slate-500"}>{rv.state || "REVIEW"}</span>
-                                                  {rv.body ? <div className="text-slate-200 whitespace-pre-wrap mt-0.5">{rv.body}</div> : null}
-                                                </div>
-                                              ))}
-                                              {pr.inline.map((cm, i) => (
-                                                <div key={`i${i}`} className="text-[11px] border-l-2 border-slate-600 pl-2">
-                                                  <span className="text-slate-400">{cm.author}</span> <span className="text-slate-500 font-mono">{cm.path}{cm.line ? `:${cm.line}` : ""}</span>
-                                                  <div className="text-slate-200 whitespace-pre-wrap">{cm.body}</div>
-                                                </div>
-                                              ))}
-                                              {pr.comments.map((cm, i) => (
-                                                <div key={`c${i}`} className="text-[11px]">
-                                                  <span className="text-slate-400">💬 {cm.author}</span>
-                                                  <div className="text-slate-200 whitespace-pre-wrap">{cm.body}</div>
-                                                </div>
-                                              ))}
-                                            </div>
-                                          )}
-                                      </div>
-                                    ))}
-                                  </div>
-                                )
-                              )}
-                            </div>
-                            <div className="text-xs text-slate-400 mb-1">원문 설명</div>
-                            <div className="bg-black/40 border border-slate-700 rounded p-3 text-xs text-slate-200 mb-4 max-h-72 overflow-auto"><RichBody segments={detail.descriptionSegments} fallback={detail.description || "(설명 없음)"} cardKey={detail.key} pid={PID} /></div>
-                            <div className="text-xs text-slate-400 mb-1">코멘트 ({detail.comments.length})</div>
-                            <div className="space-y-2 mb-4 max-h-72 overflow-auto">
-                              {detail.comments.length === 0 ? <p className="text-slate-500 text-xs">코멘트 없음</p> : detail.comments.map((cm, i) => (
-                                <div key={i} className="bg-slate-800/60 border border-slate-700 rounded p-2">
-                                  <div className="flex items-center justify-between mb-1"><span className="text-[11px] text-slate-400">{cm.author} · {cm.created ? new Date(cm.created).toLocaleString() : ""}</span><button onClick={() => setReplyTarget({ author: cm.author, accountId: cm.accountId, snippet: (cm.body || "").slice(0, 280) })} className="text-[11px] text-indigo-400 hover:text-indigo-300">↳ 답글</button></div>
-                                  <div className="text-xs text-slate-200"><RichBody segments={cm.bodySegments} fallback={cm.body} cardKey={detail.key} pid={PID} /></div>
+                              <div className="p-3">
+                                <div className="text-xs text-slate-400 mb-1">원문 설명</div>
+                                <div className="bg-black/40 border border-slate-700 rounded p-3 text-xs text-slate-200 mb-4 max-h-72 overflow-auto"><RichBody segments={detail.descriptionSegments} fallback={detail.description || "(설명 없음)"} cardKey={detail.key} pid={PID} /></div>
+                                <div className="text-xs text-slate-400 mb-1">코멘트 ({detail.comments.length})</div>
+                                <div className="space-y-2 mb-4 max-h-72 overflow-auto">
+                                  {detail.comments.length === 0 ? <p className="text-slate-500 text-xs">코멘트 없음</p> : detail.comments.map((cm, i) => (
+                                    <div key={i} className="bg-slate-800/60 border border-slate-700 rounded p-2">
+                                      <div className="flex items-center justify-between mb-1"><span className="text-[11px] text-slate-400">{cm.author} · {cm.created ? new Date(cm.created).toLocaleString() : ""}</span><button onClick={() => setReplyTarget({ author: cm.author, accountId: cm.accountId, snippet: (cm.body || "").slice(0, 280) })} className="text-[11px] text-indigo-400 hover:text-indigo-300">↳ 답글</button></div>
+                                      <div className="text-xs text-slate-200"><RichBody segments={cm.bodySegments} fallback={cm.body} cardKey={detail.key} pid={PID} /></div>
+                                    </div>
+                                  ))}
                                 </div>
-                              ))}
+                                <div className="text-xs text-slate-400 mb-1">답변 작성</div>
+                                {replyTarget && <div className="flex items-center justify-between bg-indigo-500/10 border border-indigo-500/30 rounded px-2 py-1 mb-1 text-xs text-indigo-200"><span>↳ <b>{replyTarget.author}</b> 의 코멘트에 답글</span><button onClick={() => setReplyTarget(null)} className="text-slate-400 hover:text-rose-300">취소</button></div>}
+                                <textarea value={reply} onChange={(e) => setReply(e.target.value)} spellCheck={false} placeholder="질문에 대한 답변/추가 설계를 적으세요."
+                                  className="w-full h-24 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
+                                <div className="flex items-center justify-between mt-2">
+                                  <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer"><input type="checkbox" checked={replyAnswered} onChange={(e) => setReplyAnswered(e.target.checked)} /><span>답변 완료로 표시 ({config.answeredLabel || "claude-answered"} → build 진행)</span></label>
+                                  <Btn color="green" onClick={postReply} disabled={posting}>{posting ? "등록 중…" : "답변 등록"}</Btn>
+                                </div>
+                              </div>
                             </div>
-                            <div className="text-xs text-slate-400 mb-1">답변 작성</div>
-                            {replyTarget && <div className="flex items-center justify-between bg-indigo-500/10 border border-indigo-500/30 rounded px-2 py-1 mb-1 text-xs text-indigo-200"><span>↳ <b>{replyTarget.author}</b> 의 코멘트에 답글</span><button onClick={() => setReplyTarget(null)} className="text-slate-400 hover:text-rose-300">취소</button></div>}
-                            <textarea value={reply} onChange={(e) => setReply(e.target.value)} spellCheck={false} placeholder="질문에 대한 답변/추가 설계를 적으세요."
-                              className="w-full h-24 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
-                            <div className="flex items-center justify-between mt-2">
-                              <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer"><input type="checkbox" checked={replyAnswered} onChange={(e) => setReplyAnswered(e.target.checked)} /><span>답변 완료로 표시 ({config.answeredLabel || "claude-answered"} → build 진행)</span></label>
-                              <Btn color="green" onClick={postReply} disabled={posting}>{posting ? "등록 중…" : "답변 등록"}</Btn>
+                            {/* ===== 🔀 Git · PR 작업 영역 (리뷰 반영·병합·PR 리뷰) ===== */}
+                            <div className="mb-2 rounded-lg border border-violet-500/30 bg-violet-500/[0.04]">
+                              <div className="flex items-center gap-2 px-3 py-2 border-b border-violet-500/20 bg-violet-500/10 rounded-t-lg">
+                                <span className="text-[11px] font-semibold text-violet-300 uppercase tracking-wider">🔀 Git · PR 작업</span>
+                                <span className="text-[11px] text-slate-500">리뷰 반영 · 병합 · PR 리뷰</span>
+                              </div>
+                              <div className="p-3 space-y-3">
+                                {/* 리뷰 반영(기존 PR 갱신) */}
+                                <div className="p-2 rounded bg-cyan-500/5 border border-cyan-500/20">
+                                  <div className="flex items-center justify-between mb-1">
+                                    <span className="text-xs text-cyan-300">리뷰 반영 (기존 PR 갱신 · 새 PR 안 만듦)</span>
+                                    <Btn color="indigo" onClick={() => reworkCard(c.key)}>리뷰 반영 실행</Btn>
+                                  </div>
+                                  <textarea value={reworkMemo} onChange={(e) => setReworkMemo(e.target.value)} spellCheck={false}
+                                    placeholder="(선택) 고칠 내용을 적으면 PR 코멘트로 남기고 반영합니다. 비우면 GitHub PR 리뷰·기존 코멘트만 보고 반영."
+                                    className="w-full h-20 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
+                                </div>
+                                {/* PR 병합(rebase) */}
+                                <div className="p-2 rounded bg-teal-500/5 border border-teal-500/20 flex items-center justify-between">
+                                  <span className="text-xs text-teal-300">PR 병합 (rebase merge · 병합되면 카드 완료 + clone 삭제)</span>
+                                  <Btn color="green" onClick={() => mergeCard(c.key)}>PR 병합</Btn>
+                                </div>
+                                {/* PR 리뷰 내용(GitHub 리뷰·코멘트·인라인) */}
+                                <div className="p-2 rounded bg-violet-500/5 border border-violet-500/20">
+                                  <div className="flex items-center justify-between mb-1">
+                                    <span className="text-xs text-violet-300">PR 리뷰 (GitHub 리뷰·코멘트)</span>
+                                    <Btn color="slate" onClick={() => loadReviews(c.key)}>{reviews && reviews.key === c.key && reviews.loading ? "불러오는 중…" : "리뷰 불러오기"}</Btn>
+                                  </div>
+                                  {reviews && reviews.key === c.key && !reviews.loading && (
+                                    reviews.err ? <p className="text-xs text-rose-300">{reviews.err}</p>
+                                    : reviews.prs.length === 0 ? <p className="text-xs text-slate-500">이 카드의 PR 이 없거나 리뷰 내용이 없습니다.</p>
+                                    : (
+                                      <div className="space-y-3 max-h-96 overflow-auto">
+                                        {reviews.prs.map((pr, pi) => (
+                                          <div key={pi} className="bg-black/30 border border-slate-700 rounded p-2">
+                                            <div className="flex items-center justify-between mb-1 gap-2">
+                                              <a href={pr.url} target="_blank" rel="noreferrer" className="text-xs text-indigo-400 hover:underline truncate">{pr.repo} #{pr.number} · {pr.title}</a>
+                                              <span className="text-[11px] text-slate-400 whitespace-nowrap">{pr.state}{pr.branch ? ` · ${pr.branch}` : ""}</span>
+                                            </div>
+                                            {(pr.reviews.length + pr.comments.length + pr.inline.length) === 0
+                                              ? <p className="text-[11px] text-slate-500">리뷰/코멘트 없음</p>
+                                              : (
+                                                <div className="space-y-1.5">
+                                                  {pr.reviews.map((rv, i) => (
+                                                    <div key={`r${i}`} className="text-[11px]">
+                                                      <span className="text-slate-400">{rv.author}</span> <span className={rv.state === "APPROVED" ? "text-emerald-300" : rv.state === "CHANGES_REQUESTED" ? "text-rose-300" : "text-slate-500"}>{rv.state || "REVIEW"}</span>
+                                                      {rv.body ? <div className="text-slate-200 whitespace-pre-wrap mt-0.5">{rv.body}</div> : null}
+                                                    </div>
+                                                  ))}
+                                                  {pr.inline.map((cm, i) => (
+                                                    <div key={`i${i}`} className="text-[11px] border-l-2 border-slate-600 pl-2">
+                                                      <span className="text-slate-400">{cm.author}</span> <span className="text-slate-500 font-mono">{cm.path}{cm.line ? `:${cm.line}` : ""}</span>
+                                                      <div className="text-slate-200 whitespace-pre-wrap">{cm.body}</div>
+                                                    </div>
+                                                  ))}
+                                                  {pr.comments.map((cm, i) => (
+                                                    <div key={`c${i}`} className="text-[11px]">
+                                                      <span className="text-slate-400">💬 {cm.author}</span>
+                                                      <div className="text-slate-200 whitespace-pre-wrap">{cm.body}</div>
+                                                    </div>
+                                                  ))}
+                                                </div>
+                                              )}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )
+                                  )}
+                                </div>
+                              </div>
                             </div>
                           </div>
                         )}
