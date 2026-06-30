@@ -84,6 +84,26 @@ fi
 TEST_DESC="${TEST_CMD:-자동 감지(package.json scripts.test, pytest/pytest.ini, go test, Makefile 의 test 타깃 등)}"
 BUILD_DESC="${BUILD_CMD:-자동 감지(npm run build, tsc, go build, make 등 빌드/컴파일 수단)}"
 
+# ===== PR 본문 작성 지시(생성·갱신 공통) =====
+if [[ -n "${JIRA_SITE:-}" ]]; then
+  JIRA_REF_LINE="- Jira: https://${JIRA_SITE}/browse/${ISSUE_KEY} (이슈 키 ${ISSUE_KEY})"
+else
+  JIRA_REF_LINE="- 이슈 키: ${ISSUE_KEY}"
+fi
+PR_BODY_INSTR="PR 본문에는 아래 구조의 한국어 개발 설명을 작성하세요(실제 변경에 맞게 채우고, 해당 없는 섹션만 생략):
+   ## 개요
+   - 이 PR 이 무엇을 하는지 1~3줄 요약
+   ${JIRA_REF_LINE}
+   ## 변경 사항
+   - 무엇을·왜 바꿨는지 핵심 변경을 불릿으로 (필요하면 파일/모듈 단위로)
+   ## 구현 상세
+   - 설계 결정·접근 방식·주요 구현 포인트
+   ## 테스트 / 검증
+   - 실행한 테스트·빌드 명령과 결과(예: \`go test ./...\` 통과, 빌드 통과)
+   ## 리뷰 포인트 / 주의사항
+   - 리뷰어가 집중해서 볼 부분, 마이그레이션·롤백·후속 작업·알려진 한계 등
+   본문은 길고 특수문자를 포함하므로 임시 파일에 작성한 뒤 '--body-file <파일>' 로 전달하세요(셸 이스케이프 문제 방지)."
+
 # ===== Slack 알림 (SLACK_WEBHOOK_URL 미설정 시 스킵) =====
 # 메시지는 토큰류(키/단계/URL/브랜치)와 고정 문구만 사용하므로 JSON 직접 구성이 안전.
 notify_slack() {
@@ -227,6 +247,8 @@ ${REPO_LIST_TEXT}
 5. PR 전 검증: 테스트 수단(${TEST_DESC})이 있으면 통과할 때까지 수정, 없으면 빌드(${BUILD_DESC})만 시도(수단 없으면 생략).
 6. '같은 브랜치'에 커밋(메시지 하단에 '${ISSUE_KEY}' 명시) 후 'origin' 으로 push 하면 기존 PR 이 자동 갱신됩니다. (새 PR 생성 금지)
    - env 파일(.env 또는 복사된 env)은 절대 커밋/푸시하지 마세요.
+   - push 후 'gh pr edit <번호> --body-file <파일>' 로 그 PR 의 본문을 이번 리뷰 반영까지 포함한 최신 내용으로 갱신하세요.
+     ${PR_BODY_INSTR}
 7. 반영 후 Jira 이슈 ${ISSUE_KEY} 에 '리뷰 반영 완료' 코멘트(반영 항목 요약 + 갱신된 PR URL)를 남기세요. 이슈 '상태는 변경하지 마세요'.
 PR 을 하나도 갱신하지 못했으면(반영할 PR 없음 등) 사유를 출력하고 비정상 종료하세요.
 완료 후 갱신한 PR URL 들을 출력하세요."
@@ -256,7 +278,8 @@ PR 을 하나도 생성하지 못했다면 절대 완료로 간주하지 말고,
    - 해당 repo 디렉토리로 이동(cd)해서 작업하세요.
    - PR 생성 전 'gh pr list' 로 이 이슈의 PR/브랜치가 이미 있는지 확인하고, 있으면 그 repo 는 중복 생성하지 말고 건너뛰세요.
    - feature/${ISSUE_KEY}-<짧은-설명> 브랜치 생성 → 명확한 메시지로 커밋(메시지 하단에 '${ISSUE_KEY}' 명시) → 'origin' push.
-   - gh CLI 로 그 repo 의 base 브랜치를 target 으로 PR 을 생성하고 PR URL 을 출력하세요.
+   - gh CLI('gh pr create')로 그 repo 의 base 브랜치를 target 으로 PR 을 생성하고 PR URL 을 출력하세요.
+     ${PR_BODY_INSTR}
    - (보안) env 파일(.env 또는 복사된 env 파일)은 절대 커밋/푸시하지 마세요. 커밋 전 git status 로 확인하세요.
 6. 최소 한 개 repo 에서 PR 을 생성한 뒤 마무리로:
    a) ${SUMMARY_INSTR}
