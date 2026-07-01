@@ -465,22 +465,29 @@ app.post("/api/cards/:key/stop", (req, res) => {
   try {
     const { cfg } = resolveProject(req);
     const stateDir = path.join(cfg.cloneBase || path.join(cfg.workDir || SCRIPTS_DIR, "repos"), ".state");
-    const lockDir = path.join(stateDir, `${key}.lock`);
-    let pid = null;
-    try { pid = parseInt(fs.readFileSync(`${lockDir}.pid`, "utf8").trim(), 10); } catch {}
-    if (!pid || !isAlive(pid)) return res.json({ ok: false, message: "처리 중인 작업이 없습니다(이미 종료됨)." });
-    let phase = ""; try { phase = fs.readFileSync(`${lockDir}.phase`, "utf8").trim(); } catch {}
-    const tree = [...descendantPids(pid), pid]; // 자식 먼저, 루트(bash) 마지막
-    for (const p of tree) { try { process.kill(p, "SIGTERM"); } catch {} }
-    // 4초 후: 잔존 프로세스는 SIGKILL, 그리고 락은 무조건 정리(SIGKILL 은 trap 미실행 → 스테일 락 방지)
-    setTimeout(() => {
-      for (const p of [pid, ...descendantPids(pid)].filter(isAlive)) { try { process.kill(p, "SIGKILL"); } catch {} }
-      try { fs.rmSync(lockDir, { recursive: true, force: true }); } catch {}
-      try { fs.unlinkSync(`${lockDir}.phase`); } catch {}
-      try { fs.unlinkSync(`${lockDir}.pid`); } catch {}
-    }, 4000);
-    try { fs.appendFileSync(HISTORY_PATH, JSON.stringify({ ts: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"), project: cfg.id || "", key, phase, result: "stopped", pr: "", branch: "" }) + "\n"); } catch {}
-    res.json({ ok: true, pid, killed: tree.length, message: `중지 요청됨 (pid ${pid}${tree.length > 1 ? ` 외 ${tree.length - 1}개` : ""})` });
+    // build/plan(<KEY>.lock)·review(<KEY>.review.lock) 중 살아있는 락을 모두 중지.
+    const alive = [];
+    for (const suffix of [".lock", ".review.lock"]) {
+      const lockDir = path.join(stateDir, `${key}${suffix}`);
+      let pid = null; try { pid = parseInt(fs.readFileSync(`${lockDir}.pid`, "utf8").trim(), 10); } catch {}
+      if (pid && isAlive(pid)) { let phase = ""; try { phase = fs.readFileSync(`${lockDir}.phase`, "utf8").trim(); } catch {} alive.push({ lockDir, pid, phase }); }
+    }
+    if (!alive.length) return res.json({ ok: false, message: "처리 중인 작업이 없습니다(이미 종료됨)." });
+    let killed = 0;
+    for (const { lockDir, pid, phase } of alive) {
+      const tree = [...descendantPids(pid), pid]; // 자식 먼저, 루트(bash) 마지막
+      for (const p of tree) { try { process.kill(p, "SIGTERM"); } catch {} }
+      killed += tree.length;
+      // 4초 후: 잔존 프로세스는 SIGKILL, 락은 무조건 정리(SIGKILL 은 trap 미실행 → 스테일 락 방지)
+      setTimeout(() => {
+        for (const p of [pid, ...descendantPids(pid)].filter(isAlive)) { try { process.kill(p, "SIGKILL"); } catch {} }
+        try { fs.rmSync(lockDir, { recursive: true, force: true }); } catch {}
+        try { fs.unlinkSync(`${lockDir}.phase`); } catch {}
+        try { fs.unlinkSync(`${lockDir}.pid`); } catch {}
+      }, 4000);
+      try { fs.appendFileSync(HISTORY_PATH, JSON.stringify({ ts: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"), project: cfg.id || "", key, phase: phase || "run", result: "stopped", pr: "", branch: "" }) + "\n"); } catch {}
+    }
+    res.json({ ok: true, killed, message: `중지 요청됨 (${alive.map((a) => a.phase || "run").join(", ")} · pid ${alive.map((a) => a.pid).join(", ")})` });
   } catch (e) { fail(res, e); }
 });
 
@@ -661,10 +668,15 @@ app.get("/api/cards", async (req, res) => {
     const proj = cfg.projectKey ? ` AND project = "${cfg.projectKey}"` : "";
     const data = await jiraSearch(`assignee = currentUser() AND ${triggerClause(cfg)}${proj} ORDER BY key ASC`, cfg, cred);
     const stateDir = path.join(cfg.cloneBase || path.join(cfg.workDir || SCRIPTS_DIR, "repos"), ".state");
-    // 처리 중 여부: run-jira-claude.sh 가 만든 카드별 락(<KEY>.lock) 존재 + phase 파일
+    // 처리 중 여부: 카드별 락 존재 + phase 파일. build/plan(<KEY>.lock)·review(<KEY>.review.lock) 둘 다 인식.
     const procInfo = (key) => {
-      if (!fs.existsSync(path.join(stateDir, `${key}.lock`))) return null;
-      try { return fs.readFileSync(path.join(stateDir, `${key}.lock.phase`), "utf8").trim() || "run"; } catch { return "run"; }
+      for (const suffix of [".lock", ".review.lock"]) {
+        const lock = path.join(stateDir, `${key}${suffix}`);
+        if (fs.existsSync(lock)) {
+          try { return fs.readFileSync(`${lock}.phase`, "utf8").trim() || "run"; } catch { return "run"; }
+        }
+      }
+      return null;
     };
     const labelStage = (it) => {
       if (it.labels.includes(cfg.failedLabel)) return "failed";
