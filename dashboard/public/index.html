@@ -582,28 +582,13 @@ function ProjectCard({ proj, onDeleted, flash }) {
                                 </div>
                               </div>
                             </div>
-                            {/* ===== 🔀 Git · PR 작업 영역 (리뷰 반영·병합·PR 리뷰) ===== */}
+                            {/* ===== 🔀 Git · PR 작업 영역 (PR 리뷰·리뷰 반영·병합) ===== */}
                             <div className="mb-2 rounded-lg border border-violet-500/30 bg-violet-500/[0.04]">
                               <div className="flex items-center gap-2 px-3 py-2 border-b border-violet-500/20 bg-violet-500/10 rounded-t-lg">
                                 <span className="text-[11px] font-semibold text-violet-300 uppercase tracking-wider">🔀 Git · PR 작업</span>
-                                <span className="text-[11px] text-slate-500">리뷰 반영 · 병합 · PR 리뷰</span>
+                                <span className="text-[11px] text-slate-500">PR 리뷰 · 리뷰 반영 · 병합</span>
                               </div>
                               <div className="p-3 space-y-3">
-                                {/* 리뷰 반영(기존 PR 갱신) */}
-                                <div className="p-2 rounded bg-cyan-500/5 border border-cyan-500/20">
-                                  <div className="flex items-center justify-between mb-1">
-                                    <span className="text-xs text-cyan-300">리뷰 반영 (기존 PR 갱신 · 새 PR 안 만듦)</span>
-                                    <Btn color="indigo" onClick={() => reworkCard(c.key)}>리뷰 반영 실행</Btn>
-                                  </div>
-                                  <textarea value={reworkMemo} onChange={(e) => setReworkMemo(e.target.value)} spellCheck={false}
-                                    placeholder="(선택) 고칠 내용을 적으면 PR 코멘트로 남기고 반영합니다. 비우면 GitHub PR 리뷰·기존 코멘트만 보고 반영."
-                                    className="w-full h-20 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
-                                </div>
-                                {/* PR 병합(rebase) */}
-                                <div className="p-2 rounded bg-teal-500/5 border border-teal-500/20 flex items-center justify-between">
-                                  <span className="text-xs text-teal-300">PR 병합 (rebase merge · 병합되면 카드 완료 + clone 삭제)</span>
-                                  <Btn color="green" onClick={() => mergeCard(c.key)}>PR 병합</Btn>
-                                </div>
                                 {/* PR 리뷰 내용(GitHub 리뷰·코멘트·인라인) */}
                                 <div className="p-2 rounded bg-violet-500/5 border border-violet-500/20">
                                   <div className="flex items-center justify-between mb-1">
@@ -650,6 +635,21 @@ function ProjectCard({ proj, onDeleted, flash }) {
                                       </div>
                                     )
                                   )}
+                                </div>
+                                {/* 리뷰 반영(기존 PR 갱신) */}
+                                <div className="p-2 rounded bg-cyan-500/5 border border-cyan-500/20">
+                                  <div className="flex items-center justify-between mb-1">
+                                    <span className="text-xs text-cyan-300">리뷰 반영 (기존 PR 갱신 · 새 PR 안 만듦)</span>
+                                    <Btn color="indigo" onClick={() => reworkCard(c.key)}>리뷰 반영 실행</Btn>
+                                  </div>
+                                  <textarea value={reworkMemo} onChange={(e) => setReworkMemo(e.target.value)} spellCheck={false}
+                                    placeholder="(선택) 고칠 내용을 적으면 PR 코멘트로 남기고 반영합니다. 비우면 GitHub PR 리뷰·기존 코멘트만 보고 반영."
+                                    className="w-full h-20 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
+                                </div>
+                                {/* PR 병합(rebase) */}
+                                <div className="p-2 rounded bg-teal-500/5 border border-teal-500/20 flex items-center justify-between">
+                                  <span className="text-xs text-teal-300">PR 병합 (rebase merge · 병합되면 카드 완료 + clone 삭제)</span>
+                                  <Btn color="green" onClick={() => mergeCard(c.key)}>PR 병합</Btn>
                                 </div>
                               </div>
                             </div>
