@@ -368,6 +368,11 @@ if [[ "${RESULT}" == "success" || "${RESULT}" == "skip" || "${RESULT}" == "rewor
     [[ -n "${PR_URL}" ]] && MSG="${MSG} · PR: ${PR_URL}"
     [[ -n "${BRANCH_OUT}" ]] && MSG="${MSG} · branch: ${BRANCH_OUT}"
     notify_slack "${MSG}"
+    # 리뷰 반영 후 재리뷰: REVIEW_AFTER=1 이면 이어서 리뷰어(run-review.sh)를 실행해 갱신된 PR 을 다시 리뷰.
+    if [[ "${REVIEW_AFTER:-}" == "1" && -f "${SELF_DIR}/run-review.sh" ]]; then
+      echo ">> [${ISSUE_KEY}] 리뷰 반영 완료 → 재리뷰 시작"
+      FORCE_REVIEW=1 bash "${SELF_DIR}/run-review.sh" "${ISSUE_KEY}" || echo ">> [${ISSUE_KEY}] 재리뷰 실행 실패" >&2
+    fi
   fi
 else
   count=$(( $(cat "${FAIL_FILE}" 2>/dev/null || echo 0) + 1 ))

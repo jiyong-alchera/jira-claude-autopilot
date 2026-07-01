@@ -293,6 +293,11 @@ function ProjectCard({ proj, onDeleted, flash }) {
     flash(r.ok ? `${key} 리뷰 반영 시작 — 기존 PR 갱신(로그 확인)` : (r.message || "실패"));
     if (r.ok) { setReworkMemo(""); showClaudeLog(key, "build"); }
   };
+  const reworkThenReview = async (key) => {
+    const r = await api.post(`/api/cards/${key}/run`, { phase: "build", rework: true, reviewAfter: true, memo: reworkMemo, project: PID });
+    flash(r.ok ? `${key} 리뷰 반영 → 완료 후 재리뷰 진행(로그 확인)` : (r.message || "실패"));
+    if (r.ok) { setReworkMemo(""); showClaudeLog(key, "build"); }
+  };
   const setCardRepos = async (key, repos) => {
     // 낙관적 갱신: Jira JQL 검색 인덱싱 지연으로 재조회가 늦으므로 로컬 라벨을 즉시 반영
     setCards((cs) => cs.map((c) => c.key === key
@@ -642,9 +647,12 @@ function ProjectCard({ proj, onDeleted, flash }) {
                                 </div>
                                 {/* 리뷰 반영(기존 PR 갱신) */}
                                 <div className="p-2 rounded bg-cyan-500/5 border border-cyan-500/20">
-                                  <div className="flex items-center justify-between mb-1">
+                                  <div className="flex items-center justify-between mb-1 gap-2">
                                     <span className="text-xs text-cyan-300">리뷰 반영 (기존 PR 갱신 · 새 PR 안 만듦)</span>
-                                    <Btn color="indigo" onClick={() => reworkCard(c.key)}>리뷰 반영 실행</Btn>
+                                    <div className="flex gap-2">
+                                      <Btn color="indigo" onClick={() => reworkCard(c.key)}>리뷰 반영 실행</Btn>
+                                      <Btn color="violet" onClick={() => reworkThenReview(c.key)}>리뷰 반영 및 재리뷰</Btn>
+                                    </div>
                                   </div>
                                   <textarea value={reworkMemo} onChange={(e) => setReworkMemo(e.target.value)} spellCheck={false}
                                     placeholder="(선택) 고칠 내용을 적으면 PR 코멘트로 남기고 반영합니다. 비우면 GitHub PR 리뷰·기존 코멘트만 보고 반영."

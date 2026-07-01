@@ -194,7 +194,7 @@ function runOnce(type) {
   return { ok: true, pid: proc.pid };
 }
 // 특정 카드 1건 즉시 실행(프로젝트 env 주입)
-function runCard(key, phase, stamp, projectId, reposLines, rework) {
+function runCard(key, phase, stamp, projectId, reposLines, rework, reviewAfter) {
   const isReview = phase === "review";   // review 는 run-review.sh(PR 자동 리뷰), 그 외는 run-jira-claude.sh
   const script = path.join(SCRIPTS_DIR, isReview ? "run-review.sh" : "run-jira-claude.sh");
   if (!fs.existsSync(script)) return { ok: false, message: `스크립트를 찾을 수 없습니다: ${script}` };
@@ -207,6 +207,7 @@ function runCard(key, phase, stamp, projectId, reposLines, rework) {
   const env = scriptEnv(projectId);
   if (reposLines != null) env.CARD_REPOS = reposLines;   // 카드 라벨로 좁힌 대상 repo
   if (rework) env.REWORK = "1";                          // 기존 PR 리뷰 반영 모드
+  if (reviewAfter) env.REVIEW_AFTER = "1";               // 리뷰 반영 후 이어서 재리뷰(run-review.sh)
   if (isReview) env.FORCE_REVIEW = "1";                  // 수동 review: 승인 마커 있어도 강제 재리뷰
   const args = isReview ? [script, key] : [script, key, phase];
   const proc = spawn("bash", args, { cwd: SCRIPTS_DIR, env, detached: true, stdio: ["ignore", fd, fd] });
@@ -464,7 +465,7 @@ app.post("/api/cards/:key/run", async (req, res) => {
       const { posted, errors } = await commentCardPRs(key, target, `[리뷰 반영 요청]\n${b.memo}`, cred);
       if (!posted.length) return res.json({ ok: false, message: "PR 코멘트 실패(열린 PR 없음/권한): " + (errors[0] || "") });
     }
-    res.json(runCard(key, phase, new Date().toISOString(), id, reposLines, rework));
+    res.json(runCard(key, phase, new Date().toISOString(), id, reposLines, rework, !!b.reviewAfter));
   } catch (e) { fail(res, e); }
 });
 
