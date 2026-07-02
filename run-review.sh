@@ -74,6 +74,8 @@ BOT_LOGIN="$(gh api user --jq .login 2>/dev/null || true)"
 # 개별 PR 리뷰 모드(대시보드 'PR 목록'의 '이 PR 리뷰'): 지정 repo/번호의 PR 만 리뷰(사람 PR 포함).
 REVIEW_ONLY_OWNER="${REVIEW_ONLY_OWNER:-}"
 REVIEW_ONLY_NUM="${REVIEW_ONLY_NUM:-}"
+# 개별 PR 지정 시엔 CARD_REPOS 와 무관하게 그 repo 를 직접 대상으로(설정에 없는 repo 의 연동 PR 도 리뷰 가능)
+if [[ -n "${REVIEW_ONLY_OWNER}" ]]; then R_OWNER=("${REVIEW_ONLY_OWNER}"); fi
 
 reviewed_any=0
 for OR in "${R_OWNER[@]}"; do

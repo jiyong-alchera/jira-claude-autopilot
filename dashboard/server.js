@@ -441,11 +441,12 @@ app.post("/api/cards/:key/run", async (req, res) => {
     const { id, cfg, cred } = resolveProject(req);
     let reposLines = null, repos = [];
     try {
-      const issue = await jiraReq("GET", `/rest/api/3/issue/${encodeURIComponent(key)}?fields=labels`, null, cfg, cred);
-      repos = cardRepos(cfg, (issue.fields && issue.fields.labels) || []);
+      // review 는 연동 PR 이 어느 repo 에 있든 찾도록 전 repo, plan/build 는 카드 대상(라벨) repo
+      if (phase === "review") { repos = normalizeRepos(cfg); }
+      else { const issue = await jiraReq("GET", `/rest/api/3/issue/${encodeURIComponent(key)}?fields=labels`, null, cfg, cred); repos = cardRepos(cfg, (issue.fields && issue.fields.labels) || []); }
       const cardEnv = resolveCardEnv(key, cfg);   // 카드 전용 env(로컬) → 있으면 우선
       reposLines = reposToLines(cfg, repos, cardEnv);
-    } catch { reposLines = null; } // 라벨 조회 실패 시 scriptEnv 기본(전체 repo) 사용
+    } catch { reposLines = null; } // 조회 실패 시 scriptEnv 기본(전체 repo) 사용
     // rework: 메모가 있으면 PR 코멘트로 남김(반영 요청) — claude 가 PR 코멘트를 읽어 반영
     if (rework && String(b.memo || "").trim()) {
       const target = repos.length ? repos : cardRepos(cfg, []);
@@ -580,8 +581,7 @@ app.get("/api/cards/:key/prs", async (req, res) => {
   if (!/^[A-Z][A-Z0-9]+-[0-9]+$/.test(key)) return res.status(400).json({ ok: false, message: "이슈 키 형식 오류" });
   try {
     const { cfg, cred } = resolveProject(req);
-    const issue = await jiraReq("GET", `/rest/api/3/issue/${encodeURIComponent(key)}?fields=labels`, null, cfg, cred);
-    const repos = cardRepos(cfg, (issue.fields && issue.fields.labels) || []);
+    const repos = normalizeRepos(cfg);   // PR 탐색: build 대상 라벨과 무관하게 프로젝트 전 repo 검색(연동 PR 이 어느 repo 에 있든 인식)
     const botLogin = await ghUserLogin(cred);
     const prs = (await listCardPRs(repos, key, cred)).map((p) => ({ ...p, isBot: !botLogin || p.author === botLogin }));
     res.json({ ok: true, prs, botLogin });
@@ -596,8 +596,7 @@ app.post("/api/cards/:key/merge", async (req, res) => {
   try {
     const { id, cfg, cred } = resolveProject(req);
     const body = req.body || {};
-    const issue = await jiraReq("GET", `/rest/api/3/issue/${encodeURIComponent(key)}?fields=labels`, null, cfg, cred);
-    const repos = cardRepos(cfg, (issue.fields && issue.fields.labels) || []);
+    const repos = normalizeRepos(cfg);   // PR 탐색: build 대상 라벨과 무관하게 프로젝트 전 repo 검색(연동 PR 이 어느 repo 에 있든 인식)
     if (!repos.length) return res.json({ ok: false, message: "대상 repo 가 없습니다." });
     const botLogin = await ghUserLogin(cred);
     const allPRs = await listCardPRs(repos, key, cred);
@@ -633,7 +632,7 @@ async function completeMergedCards(id) {
   const completed = [];
   for (const i of (data.issues || [])) {
     const key = i.key;
-    const repos = cardRepos(cfg, (i.fields && i.fields.labels) || []);
+    const repos = normalizeRepos(cfg);   // 완료 판정도 프로젝트 전 repo 의 PR 로
     if (!repos.length) continue;
     try { const fin = await maybeFinalizeCard(id, cfg, cred, key, repos, botLogin); if (fin.finalized) completed.push(key); } catch {}
   }
@@ -656,8 +655,7 @@ app.get("/api/cards/:key/reviews", async (req, res) => {
   if (!/^[A-Z][A-Z0-9]+-[0-9]+$/.test(key)) return res.status(400).json({ ok: false, message: "이슈 키 형식 오류" });
   try {
     const { cfg, cred } = resolveProject(req);
-    const issue = await jiraReq("GET", `/rest/api/3/issue/${encodeURIComponent(key)}?fields=labels`, null, cfg, cred);
-    const repos = cardRepos(cfg, (issue.fields && issue.fields.labels) || []);
+    const repos = normalizeRepos(cfg);   // PR 탐색: build 대상 라벨과 무관하게 프로젝트 전 repo 검색(연동 PR 이 어느 repo 에 있든 인식)
     const results = [];
     for (const r of repos) { try { results.push(...await repoPRReviews(r, key, cred)); } catch { /* repo 단위 실패는 건너뜀 */ } }
     res.json({ ok: true, prs: results });
