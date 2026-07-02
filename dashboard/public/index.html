@@ -81,18 +81,18 @@ function InfoTip({ text, title }) {
       </div>
     </div>, document.body) : null;
   return (
-    <span className="inline-block ml-1 align-middle">
+    <React.Fragment>
       <button type="button" title="설명 보기" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen(true); }}
-        className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-600 hover:bg-indigo-500 text-slate-100 text-[10px] font-bold cursor-pointer">i</button>
+        className="inline-flex items-center justify-center w-4 h-4 shrink-0 align-middle leading-none rounded-full bg-slate-600 hover:bg-indigo-500 text-slate-100 text-[10px] font-bold cursor-pointer">i</button>
       {modal}
-    </span>
+    </React.Fragment>
   );
 }
 
 function Field({ label, value, onChange, type = "text", placeholder, info }) {
   return (
     <label className="block mb-3">
-      <span className="text-sm text-slate-400">{label}{info && <InfoTip text={info} title={label} />}</span>
+      <span className="text-sm text-slate-400 inline-flex items-center gap-1">{label}{info && <InfoTip text={info} title={label} />}</span>
       <input
         type={type} value={value || ""} placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
@@ -410,7 +410,7 @@ function ProjectCard({ proj, onDeleted, flash }) {
         <Field label="담당자 이름" value={config.assigneeName} onChange={(v) => setConfig({ ...config, assigneeName: v })}
           info={"카드 담당자의 표시 이름입니다. 예: 홍길동(Gil-dong)\n\nplan 단계 질문 코멘트·리뷰 반영·실패 코멘트에서 담당자를 멘션/지칭할 때 사용됩니다."} />
         <label className="block mb-3">
-          <span className="text-sm text-slate-400">트리거 방식<InfoTip title="트리거 방식" text={"어떤 신호로 '자동화 대상 카드'를 판정할지 정합니다.\n\n• 라벨(권장): 아래 '트리거 라벨'이 붙은 카드만 대상. 정확하고 안전합니다.\n• 텍스트(레거시): 카드 설명에 '트리거 텍스트'가 포함된 카드를 대상."} /></span>
+          <span className="text-sm text-slate-400 inline-flex items-center gap-1">트리거 방식<InfoTip title="트리거 방식" text={"어떤 신호로 '자동화 대상 카드'를 판정할지 정합니다.\n\n• 라벨(권장): 아래 '트리거 라벨'이 붙은 카드만 대상. 정확하고 안전합니다.\n• 텍스트(레거시): 카드 설명에 '트리거 텍스트'가 포함된 카드를 대상."} /></span>
           <select value={config.triggerMode || "label"} onChange={(e) => setConfig({ ...config, triggerMode: e.target.value })}
             className="mt-1 w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400">
             <option value="label">라벨 (권장)</option><option value="text">텍스트 (레거시)</option>
@@ -516,7 +516,7 @@ function ProjectCard({ proj, onDeleted, flash }) {
         {!config.projectKey && <p className="text-amber-300/80 text-sm mb-2">프로젝트 키를 먼저 설정·저장하세요.</p>}
         <div className="grid grid-cols-2 gap-x-5">
           <label className="block mb-3">
-            <span className="text-sm text-slate-400">이슈 타입<InfoTip title="이슈 타입" text={"생성할 Jira 카드의 이슈 타입입니다(작업/스토리/버그/하위작업 등).\n\n'메타 새로고침'으로 이 프로젝트에서 실제 사용 가능한 타입 목록을 불러옵니다. 하위작업(Subtask)을 만들려면 아래 상위 키가 반드시 필요합니다."} /></span>
+            <span className="text-sm text-slate-400 inline-flex items-center gap-1">이슈 타입<InfoTip title="이슈 타입" text={"생성할 Jira 카드의 이슈 타입입니다(작업/스토리/버그/하위작업 등).\n\n'메타 새로고침'으로 이 프로젝트에서 실제 사용 가능한 타입 목록을 불러옵니다. 하위작업(Subtask)을 만들려면 아래 상위 키가 반드시 필요합니다."} /></span>
             <select value={newCard.issueType} onChange={(e) => setNewCard({ ...newCard, issueType: e.target.value })}
               className="mt-1 w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400">
               {jiraMeta.issueTypes.length === 0 && <option value="">(메타 불러오는 중…)</option>}
@@ -526,7 +526,7 @@ function ProjectCard({ proj, onDeleted, flash }) {
           <Field label="요약 (필수)" value={newCard.summary} onChange={(v) => setNewCard({ ...newCard, summary: v })} placeholder="카드 제목"
             info={"생성할 카드의 제목(summary)입니다. 필수 항목이에요.\n\n작업 내용을 한 줄로 명확히 적으세요. 상세 요구사항은 카드 생성 후 설명·코멘트로 보강할 수 있습니다."} />
           <label className="block mb-3">
-            <span className="text-sm text-slate-400">상위 에픽 (드롭다운)<InfoTip title="상위 에픽" text={"이 카드를 소속시킬 상위 에픽을 선택합니다(선택 사항).\n\n'메타 새로고침'으로 프로젝트의 에픽 목록을 불러옵니다. 아래 '상위 키 직접 입력'에 값이 있으면 그쪽이 우선 적용됩니다."} /></span>
+            <span className="text-sm text-slate-400 inline-flex items-center gap-1">상위 에픽 (드롭다운)<InfoTip title="상위 에픽" text={"이 카드를 소속시킬 상위 에픽을 선택합니다(선택 사항).\n\n'메타 새로고침'으로 프로젝트의 에픽 목록을 불러옵니다. 아래 '상위 키 직접 입력'에 값이 있으면 그쪽이 우선 적용됩니다."} /></span>
             <select value={newCard.epicKey} onChange={(e) => setNewCard({ ...newCard, epicKey: e.target.value })}
               className="mt-1 w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400">
               <option value="">(상위 없음)</option>
