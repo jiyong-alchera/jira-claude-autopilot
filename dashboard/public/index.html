@@ -782,10 +782,27 @@ function ProjectCard({ proj, onDeleted, flash }) {
                             <div className="mb-2 rounded-lg border border-violet-500/30 bg-violet-500/[0.04]">
                               <div className="flex items-center gap-2 px-3 py-2 border-b border-violet-500/20 bg-violet-500/10 rounded-t-lg flex-wrap">
                                 <span className="text-[11px] font-semibold text-violet-300 uppercase tracking-wider">🔀 Git · PR 작업</span>
-                                <span className="text-[11px] text-slate-500">PR 리뷰 · 리뷰 반영 · 병합</span>
-                                {(() => { const tb = (detail.comments || []).map((cm) => { const m = (cm.body || "").match(/🌿 타겟 브랜치:\s*([A-Za-z0-9._\/-]+)/); return m ? m[1] : null; }).filter(Boolean).pop(); return tb ? <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 font-mono">🌿 타겟 {tb}</span> : null; })()}
+                                <span className="text-[11px] text-slate-500">브랜치 · PR 리뷰 · 리뷰 반영 · 병합</span>
                               </div>
                               <div className="p-3 space-y-3">
+                                {/* 🌿 브랜치 영역 — 이 카드 관련 브랜치(타겟 + PR) 별도 표시 */}
+                                {(() => {
+                                  const tb = (detail.comments || []).map((cm) => { const m = (cm.body || "").match(/🌿 타겟 브랜치:\s*([A-Za-z0-9._\/-]+)/); return m ? m[1] : null; }).filter(Boolean).pop();
+                                  const prBranches = (prs && prs.key === c.key && !prs.loading) ? prs.list : [];
+                                  return (
+                                    <div className="p-2 rounded bg-emerald-500/5 border border-emerald-500/20">
+                                      <div className="text-xs text-emerald-300 mb-1">🌿 브랜치 (이 카드 관련)</div>
+                                      <div className="text-[11px] space-y-1">
+                                        <div className="flex gap-1 flex-wrap items-baseline"><span className="text-slate-400 shrink-0">타겟(작업) 브랜치:</span>{tb ? <span className="font-mono text-emerald-300 truncate" title={tb}>{tb}</span> : <span className="text-slate-500">없음 (plan 완료 시 자동 생성)</span>}</div>
+                                        <div><span className="text-slate-400">PR 브랜치:</span>{prBranches.length === 0 ? <span className="text-slate-500 ml-1">(‘PR 불러오기’로 조회)</span> : (
+                                          <ul className="ml-2 mt-0.5 space-y-0.5">
+                                            {prBranches.map((pr, i) => <li key={i} className="truncate"><a href={pr.url} target="_blank" rel="noreferrer" className="text-indigo-400 hover:underline">{pr.repo} #{pr.number}</a> <span className="font-mono text-slate-300">{pr.branch || "-"}</span> <span className="text-slate-500">· {pr.state}{tb && pr.branch === tb ? " · 타겟 일치" : ""}</span></li>)}
+                                          </ul>
+                                        )}</div>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
                                 {/* PR 목록 (카드 1 : PR N) — 자동화/사람 PR 구분 + 개별 액션 */}
                                 <div className="p-2 rounded bg-slate-700/20 border border-slate-600/40">
                                   <div className="flex items-center justify-between mb-1">
