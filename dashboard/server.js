@@ -531,9 +531,9 @@ async function listCardPRs(repos, key, cred) {
   const out = [];
   for (const repo of repos) {
     const or = ownerRepo(repo.url); if (!or) continue;
-    const list = await gh(["pr", "list", "--repo", or, "--search", key, "--state", "all", "--json", "number,url,title,state,headRefName,isDraft,author,createdAt"], cred);
+    const list = await gh(["pr", "list", "--repo", or, "--search", key, "--state", "all", "--json", "number,url,title,state,headRefName,baseRefName,isDraft,author,createdAt,mergeable,mergeStateStatus"], cred);
     let prs = []; try { prs = JSON.parse(list.stdout || "[]"); } catch {}
-    for (const pr of prs) out.push({ repo: repo.name, owner: or, number: pr.number, url: pr.url, title: pr.title, state: pr.state, branch: pr.headRefName || "", isDraft: !!pr.isDraft, author: (pr.author && pr.author.login) || "", createdAt: pr.createdAt || "" });
+    for (const pr of prs) out.push({ repo: repo.name, owner: or, number: pr.number, url: pr.url, title: pr.title, state: pr.state, branch: pr.headRefName || "", base: pr.baseRefName || "", isDraft: !!pr.isDraft, author: (pr.author && pr.author.login) || "", createdAt: pr.createdAt || "", mergeable: pr.mergeable || "UNKNOWN", mergeState: pr.mergeStateStatus || "UNKNOWN" });
   }
   return out;
 }
