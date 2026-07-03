@@ -43,6 +43,8 @@ PLANNED_LABEL="${PLANNED_LABEL:-claude-planned}"
 ANSWERED_LABEL="${ANSWERED_LABEL:-claude-answered}"   # 담당자가 답변 완료를 알리는 명시 라벨(build 진입 게이트)
 FAILED_LABEL="${FAILED_LABEL:-claude-failed}"   # 반복 실패 카드 표시(탐지 제외)
 PR_OPEN_LABEL="${PR_OPEN_LABEL:-claude-pr}"     # PR 올림(병합 대기) 표시 — build 가 추가, 병합 시 완료 전환
+TARGET_BRANCH_LABEL="${TARGET_BRANCH_LABEL:-claude-branched}"   # plan 이 타겟(작업) 브랜치를 만들었음을 표시하는 라벨
+TARGET_BRANCH_MARK="🌿 타겟 브랜치:"           # Jira 코멘트에 타겟 브랜치명을 남기는 마커(build 가 이걸로 브랜치 인식)
 MAX_RETRIES="${MAX_RETRIES:-3}"                 # 연속 실패 N회 초과 시 실패 처리
 TEST_CMD="${TEST_CMD:-}"                        # 테스트 명령(비우면 claude 가 자동 감지)
 BUILD_CMD="${BUILD_CMD:-}"                      # 빌드 명령(비우면 claude 가 자동 감지)
@@ -238,7 +240,11 @@ ${REPO_LIST_TEXT}
   코멘트 끝에 '답변을 마치신 뒤 이 이슈에 \"${ANSWERED_LABEL}\" 라벨을 추가해 주세요. (라벨이 있어야 자동 build 가 진행됩니다)' 안내를 포함하세요.
 - 질문이 없다면, '질문 없음 — 구현 준비 완료' 라는 코멘트를 남기고, 마찬가지로 담당자에게 '${ANSWERED_LABEL}' 라벨 추가를 요청하세요.
 - 코멘트 작성에 성공한 뒤, 이 이슈에 '${PLANNED_LABEL}' 라벨을 추가하세요.
-  (이 라벨은 build 루프가 이 카드를 인식하고, plan 루프가 중복 처리하지 않도록 하는 표시입니다.)"
+  (이 라벨은 build 루프가 이 카드를 인식하고, plan 루프가 중복 처리하지 않도록 하는 표시입니다.)
+- 마지막으로, 이 카드와 위 plan 내용에 맞는 '작업(타겟) 브랜치 이름'을 정하세요. 형식: 'feat/${ISSUE_KEY}-<영문 소문자·하이픈 슬러그>' (예: feat/${ISSUE_KEY}-add-webhook). 그리고:
+  (a) Jira 이슈에 '${TARGET_BRANCH_MARK} <브랜치이름>' 형식의 코멘트를 남기세요(build 가 이 브랜치로 작업합니다).
+  (b) 이슈에 '${TARGET_BRANCH_LABEL}' 라벨을 추가하세요.
+  (c) 출력의 '맨 마지막 줄'에 정확히 'TARGET_BRANCH: <브랜치이름>' 한 줄을 출력하세요(시스템이 이 이름으로 원격 브랜치를 생성합니다). 코드는 작성하지 마세요."
 elif [[ -n "${REWORK:-}" ]]; then
   echo ">> [${ISSUE_KEY}] [REWORK] 기존 PR 리뷰 반영 (대상 repo ${#R_URL[@]}개)"
   PROMPT="당신은 Jira 이슈 ${ISSUE_KEY} 의 '기존 PR'에 리뷰 피드백을 반영합니다. 새 PR/새 브랜치는 만들지 마세요.
@@ -287,8 +293,9 @@ PR 을 하나도 생성하지 못했다면 절대 완료로 간주하지 말고,
 5. 구현·검증 후 — 위 '각 repo' 에 대해(변경이 필요 없는 repo 는 건너뜀). **여러 repo 를 수정했다면 repo 마다 각각 별도의 브랜치·PR 을 생성하세요(여러 repo 변경을 하나의 PR 로 합치지 말 것). PR 은 각 repo 의 origin 에 그 repo 변경만 담아 올립니다.**:
    - 해당 repo 디렉토리로 이동(cd)해서 작업하세요.
    - PR 생성 전 'gh pr list' 로 이 이슈의 PR/브랜치가 이미 있는지 확인하고, 있으면 그 repo 는 중복 생성하지 말고 건너뛰세요.
-   - feature/${ISSUE_KEY}-<짧은-설명> 브랜치 생성 → 명확한 메시지로 커밋(메시지 하단에 '${ISSUE_KEY}' 명시) → 'origin' push.
-   - gh CLI('gh pr create')로 그 repo 의 base 브랜치를 target 으로 PR 을 생성하고 PR URL 을 출력하세요.
+   - 작업 브랜치: plan 이 정한 '타겟 브랜치'를 사용하세요. Jira 이슈 코멘트에서 '${TARGET_BRANCH_MARK} <이름>' 을 찾아(또는 '${TARGET_BRANCH_LABEL}' 라벨 존재 여부로 판단) 그 브랜치명을 확인하고, 원격에 이미 있으니 'git fetch origin && git checkout <타겟브랜치>' 로 그 브랜치에서 작업하세요. (타겟 브랜치를 못 찾은 경우에만 feature/${ISSUE_KEY}-<짧은-설명> 를 새로 생성)
+   - 명확한 메시지로 커밋(메시지 하단에 '${ISSUE_KEY}' 명시) → 'origin' 의 그 브랜치로 push.
+   - gh CLI('gh pr create')로 그 repo 의 base 브랜치를 target 으로 PR 을 생성하고 PR URL 을 출력하세요. **PR 본문 맨 위에 '${TARGET_BRANCH_MARK} <타겟브랜치>' 한 줄을 반드시 포함**해 이 PR 이 그 타겟 브랜치의 PR 임을 표시하고, 생성 후 'gh pr edit <번호> --add-label ${TARGET_BRANCH_LABEL}' 로 PR 라벨을 답니다(라벨이 repo 에 없으면 'gh label create ${TARGET_BRANCH_LABEL} -c \"#22c55e\" -d \"claude 타겟 브랜치 PR\"' 로 만든 뒤 재시도, 실패해도 무방).
      ${PR_BODY_INSTR}
    - (보안) env 파일(.env 또는 복사된 env 파일)은 절대 커밋/푸시하지 마세요. 커밋 전 git status 로 확인하세요.
 6. 최소 한 개 repo 에서 PR 을 생성한 뒤 마무리로:
@@ -366,6 +373,23 @@ if [[ "${RESULT}" == "success" || "${RESULT}" == "skip" || "${RESULT}" == "rewor
   rm -f "${FAIL_FILE}"
   echo ">> [${ISSUE_KEY}] 완료 (phase=${PHASE}, result=${RESULT})"
   record_history_prs "${RESULT}"   # 생성된 PR 을 repo 별로 각각 이력에 기록(멀티 repo)
+  # plan 성공: claude 가 정한 타겟(작업) 브랜치를 각 repo 원격에 생성(base 에서 분기). build 가 이 브랜치로 작업.
+  if [[ "${PHASE}" == "plan" && "${RESULT}" == "success" ]]; then
+    TARGET_BRANCH="$(grep -oE 'TARGET_BRANCH:[[:space:]]*[A-Za-z0-9._/-]+' "${CLAUDE_OUT}" | tail -n1 | sed -E 's/^TARGET_BRANCH:[[:space:]]*//' || true)"
+    [[ -z "${TARGET_BRANCH}" ]] && TARGET_BRANCH="feat/${ISSUE_KEY}-work"
+    for idx in "${!R_URL[@]}"; do
+      rd="${CLONE_BASE}/${R_NAME[$idx]}-${ISSUE_KEY}"; rb="${R_BRANCH[$idx]}"
+      [[ -d "${rd}/.git" ]] || continue
+      git -C "${rd}" fetch origin --quiet 2>/dev/null || true
+      if git -C "${rd}" ls-remote --exit-code --heads origin "${TARGET_BRANCH}" >/dev/null 2>&1; then
+        echo ">> [${ISSUE_KEY}] (${R_NAME[$idx]}) 타겟 브랜치 이미 존재: ${TARGET_BRANCH}"
+      elif git -C "${rd}" checkout -B "${TARGET_BRANCH}" "origin/${rb}" >/dev/null 2>&1 && git -C "${rd}" push -u origin "${TARGET_BRANCH}" >/dev/null 2>&1; then
+        echo ">> [${ISSUE_KEY}] (${R_NAME[$idx]}) 타겟 브랜치 생성·푸시: ${TARGET_BRANCH} (base ${rb})"
+      else
+        echo ">> [${ISSUE_KEY}] (${R_NAME[$idx]}) 타겟 브랜치 생성 실패: ${TARGET_BRANCH}" >&2
+      fi
+    done
+  fi
   # 완료 요약을 설명 ADF '맨 아래'에 안전 append(기존 이미지/노드 보존). label 모드 + 요약 파일 존재 시.
   if [[ "${PHASE}" == "build" && "${TRIGGER_MODE}" == "label" && -s "${SUMMARY_FILE}" ]]; then
     if command -v node >/dev/null 2>&1 && [[ -n "${JIRA_SITE:-}" && -n "${ATLASSIAN_EMAIL:-}" && -n "${ATLASSIAN_TOKEN:-}" ]]; then

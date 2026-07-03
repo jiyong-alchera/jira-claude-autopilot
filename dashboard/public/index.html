@@ -746,9 +746,10 @@ function ProjectCard({ proj, onDeleted, flash }) {
                             </div>
                             {/* ===== 🔀 Git · PR 작업 영역 (PR 리뷰·리뷰 반영·병합) ===== */}
                             <div className="mb-2 rounded-lg border border-violet-500/30 bg-violet-500/[0.04]">
-                              <div className="flex items-center gap-2 px-3 py-2 border-b border-violet-500/20 bg-violet-500/10 rounded-t-lg">
+                              <div className="flex items-center gap-2 px-3 py-2 border-b border-violet-500/20 bg-violet-500/10 rounded-t-lg flex-wrap">
                                 <span className="text-[11px] font-semibold text-violet-300 uppercase tracking-wider">🔀 Git · PR 작업</span>
                                 <span className="text-[11px] text-slate-500">PR 리뷰 · 리뷰 반영 · 병합</span>
+                                {(() => { const tb = (detail.comments || []).map((cm) => { const m = (cm.body || "").match(/🌿 타겟 브랜치:\s*([A-Za-z0-9._\/-]+)/); return m ? m[1] : null; }).filter(Boolean).pop(); return tb ? <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 font-mono">🌿 타겟 {tb}</span> : null; })()}
                               </div>
                               <div className="p-3 space-y-3">
                                 {/* PR 목록 (카드 1 : PR N) — 자동화/사람 PR 구분 + 개별 액션 */}
