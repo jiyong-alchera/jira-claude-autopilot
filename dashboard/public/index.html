@@ -167,6 +167,45 @@ function Markdown({ text }) {
   return <div className="md-body" dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
+// 한 PR 의 GitHub 리뷰·인라인·코멘트를 마크다운 카드로 렌더(PR 목록 인라인 펼침에 사용)
+function PrReviewBody({ pr }) {
+  if (!pr) return null;
+  if ((pr.reviews.length + pr.comments.length + pr.inline.length) === 0) return <p className="text-[11px] text-slate-500">리뷰/코멘트 없음</p>;
+  return (
+    <div className="space-y-2">
+      {pr.reviews.map((rv, i) => (
+        <div key={`r${i}`} className="rounded border border-slate-700 bg-slate-800/40 overflow-hidden">
+          <div className="flex items-center gap-2 px-2 py-1 bg-slate-800/70 border-b border-slate-700">
+            <span className="text-[11px] font-semibold text-slate-300">{rv.author}</span>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${rv.state === "APPROVED" ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/40" : rv.state === "CHANGES_REQUESTED" ? "bg-rose-500/15 text-rose-300 border-rose-500/40" : "bg-slate-600/30 text-slate-400 border-slate-600"}`}>{(rv.state || "REVIEW").replace(/_/g, " ")}</span>
+            <span className="text-[10px] text-slate-500 ml-auto">리뷰</span>
+          </div>
+          {rv.body ? <div className="px-2 py-1.5"><Markdown text={rv.body} /></div> : null}
+        </div>
+      ))}
+      {pr.inline.map((cm, i) => (
+        <div key={`i${i}`} className="rounded border border-slate-700 bg-slate-800/40 overflow-hidden">
+          <div className="flex items-center gap-2 px-2 py-1 bg-slate-800/70 border-b border-slate-700">
+            <span className="text-[11px] font-semibold text-slate-300">{cm.author}</span>
+            <span className="text-[10px] text-slate-500 font-mono truncate">{cm.path}{cm.line ? `:${cm.line}` : ""}</span>
+            <span className="text-[10px] text-slate-500 ml-auto whitespace-nowrap">인라인</span>
+          </div>
+          <div className="px-2 py-1.5"><Markdown text={cm.body} /></div>
+        </div>
+      ))}
+      {pr.comments.map((cm, i) => (
+        <div key={`c${i}`} className="rounded border border-slate-700 bg-slate-800/40 overflow-hidden">
+          <div className="flex items-center gap-2 px-2 py-1 bg-slate-800/70 border-b border-slate-700">
+            <span className="text-[11px] font-semibold text-slate-300">💬 {cm.author}</span>
+            <span className="text-[10px] text-slate-500 ml-auto">코멘트</span>
+          </div>
+          <div className="px-2 py-1.5"><Markdown text={cm.body} /></div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ADF 세그먼트(text/image) 렌더 — 카드 이미지는 백엔드 프록시(/api/.../attachment/:id)로 표시
 function RichBody({ segments, fallback, cardKey, pid }) {
   if (!segments || !segments.length) return <span className="whitespace-pre-wrap">{fallback || "(없음)"}</span>;
@@ -276,6 +315,7 @@ function ProjectCard({ proj, onDeleted, flash }) {
   const [reworkMemo, setReworkMemo] = useState("");
   const [reviews, setReviews] = useState(null);   // { key, loading, prs:[...] } — PR 리뷰 내용
   const [prs, setPrs] = useState(null);           // { key, loading, list:[...], botLogin } — 카드 1:N PR 목록
+  const [prExpanded, setPrExpanded] = useState(""); // PR 목록에서 펼쳐 리뷰/코멘트 보는 PR (owner#number)
 
   const credSet = (k) => creds[k] === true;
   const openRepoEnv = async (name) => {
@@ -401,6 +441,12 @@ function ProjectCard({ proj, onDeleted, flash }) {
     setReviews({ key, loading: true, prs: [] });
     const r = await api.get(withP(`/api/cards/${key}/reviews`));
     setReviews((p) => (p && p.key === key) ? { key, loading: false, prs: r.ok ? (r.prs || []) : [], err: r.ok ? "" : (r.message || "조회 실패") } : p);
+  };
+  const togglePrReviews = (key, pr) => {   // PR 목록에서 그 PR 의 리뷰/코멘트를 아래로 펼침(리뷰 데이터 최초 1회 로드)
+    const rid = `${pr.owner}#${pr.number}`;
+    if (prExpanded === rid) { setPrExpanded(""); return; }
+    setPrExpanded(rid);
+    if (!(reviews && reviews.key === key)) loadReviews(key);
   };
   const del = async () => { if (!window.confirm(`프로젝트 '${config.name || PID}' 를 삭제할까요? (설정/자격증명만 제거, Jira/repo 는 영향 없음)`)) return; await api.del(`/api/projects/${PID}`); onDeleted(); };
 
@@ -770,74 +816,24 @@ function ProjectCard({ proj, onDeleted, flash }) {
                                               <div className="text-[11px] text-slate-300 mt-0.5 truncate">{pr.title}</div>
                                               <div className="text-[10px] text-slate-500 font-mono truncate">{pr.branch}</div>
                                               <div className="flex flex-wrap gap-2 mt-1">
-                                                <button onClick={() => reviewOnePr(c.key, pr)} className="text-[11px] px-2 py-0.5 rounded border border-violet-500/40 text-violet-300 hover:bg-violet-500/10 transition">이 PR 리뷰</button>
+                                                <button onClick={() => togglePrReviews(c.key, pr)} className="text-[11px] px-2 py-0.5 rounded border border-indigo-500/40 text-indigo-300 hover:bg-indigo-500/10 transition">{prExpanded === `${pr.owner}#${pr.number}` ? "▾ 리뷰/코멘트" : "▸ 리뷰/코멘트"}</button>
+                                                <button onClick={() => reviewOnePr(c.key, pr)} className="text-[11px] px-2 py-0.5 rounded border border-violet-500/40 text-violet-300 hover:bg-violet-500/10 transition">이 PR 리뷰 실행</button>
                                                 {c.assignedToMe && pr.isBot && pr.state === "OPEN" && <button onClick={() => reworkOnePr(c.key, pr, false)} className="text-[11px] px-2 py-0.5 rounded border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 transition">리뷰 반영</button>}
                                                 {c.assignedToMe && pr.isBot && pr.state === "OPEN" && <button onClick={() => reworkOnePr(c.key, pr, true)} className="text-[11px] px-2 py-0.5 rounded border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 transition">반영+재리뷰</button>}
                                                 {c.assignedToMe && pr.state === "OPEN" && <button onClick={() => mergeOnePr(c.key, pr)} className="text-[11px] px-2 py-0.5 rounded border border-teal-500/40 text-teal-300 hover:bg-teal-500/10 transition">이 PR 병합</button>}
                                                 <a href={pr.url} target="_blank" rel="noreferrer" className="text-[11px] px-2 py-0.5 rounded border border-slate-600 text-slate-300 hover:bg-slate-600/20 transition">열기</a>
                                               </div>
+                                              {prExpanded === `${pr.owner}#${pr.number}` && (
+                                                <div className="mt-2 pt-2 border-t border-slate-700/70">
+                                                  {reviews && reviews.key === c.key && reviews.loading ? <p className="text-[11px] text-slate-500">불러오는 중…</p>
+                                                    : reviews && reviews.key === c.key && reviews.err ? <p className="text-[11px] text-rose-300">{reviews.err}</p>
+                                                    : (() => { const rpr = (reviews && reviews.key === c.key ? reviews.prs : []).find((x) => x.owner === pr.owner && String(x.number) === String(pr.number)); return rpr ? <PrReviewBody pr={rpr} /> : <p className="text-[11px] text-slate-500">리뷰/코멘트 없음</p>; })()}
+                                                </div>
+                                              )}
                                             </div>
                                           );
                                         })}
                                         <p className="text-[10px] text-slate-500 mt-1">‘자동화’=봇 계정({prs.botLogin || "?"})이 만든 PR. 일괄 ‘PR 병합’·자동 완료·review 루프는 자동화 PR만 대상, 사람 PR은 개별 버튼으로만 처리됩니다.</p>
-                                      </div>
-                                    )
-                                  )}
-                                </div>
-                                {/* PR 리뷰 내용(GitHub 리뷰·코멘트·인라인) */}
-                                <div className="p-2 rounded bg-violet-500/5 border border-violet-500/20">
-                                  <div className="flex items-center justify-between mb-1">
-                                    <span className="text-xs text-violet-300">PR 리뷰 (GitHub 리뷰·코멘트)</span>
-                                    <Btn color="slate" onClick={() => loadReviews(c.key)}>{reviews && reviews.key === c.key && reviews.loading ? "불러오는 중…" : "리뷰 불러오기"}</Btn>
-                                  </div>
-                                  {reviews && reviews.key === c.key && !reviews.loading && (
-                                    reviews.err ? <p className="text-xs text-rose-300">{reviews.err}</p>
-                                    : reviews.prs.length === 0 ? <p className="text-xs text-slate-500">이 카드의 PR 이 없거나 리뷰 내용이 없습니다.</p>
-                                    : (
-                                      <div className="space-y-3 max-h-96 overflow-auto">
-                                        {reviews.prs.map((pr, pi) => (
-                                          <div key={pi} className="bg-black/30 border border-slate-700 rounded p-2">
-                                            <div className="flex items-center justify-between mb-1 gap-2">
-                                              <a href={pr.url} target="_blank" rel="noreferrer" className="text-xs text-indigo-400 hover:underline truncate">{pr.repo} #{pr.number} · {pr.title}</a>
-                                              <span className="text-[11px] text-slate-400 whitespace-nowrap">{pr.state}{pr.branch ? ` · ${pr.branch}` : ""}</span>
-                                            </div>
-                                            {(pr.reviews.length + pr.comments.length + pr.inline.length) === 0
-                                              ? <p className="text-[11px] text-slate-500">리뷰/코멘트 없음</p>
-                                              : (
-                                                <div className="space-y-2">
-                                                  {pr.reviews.map((rv, i) => (
-                                                    <div key={`r${i}`} className="rounded border border-slate-700 bg-slate-800/40 overflow-hidden">
-                                                      <div className="flex items-center gap-2 px-2 py-1 bg-slate-800/70 border-b border-slate-700">
-                                                        <span className="text-[11px] font-semibold text-slate-300">{rv.author}</span>
-                                                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${rv.state === "APPROVED" ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/40" : rv.state === "CHANGES_REQUESTED" ? "bg-rose-500/15 text-rose-300 border-rose-500/40" : "bg-slate-600/30 text-slate-400 border-slate-600"}`}>{(rv.state || "REVIEW").replace(/_/g, " ")}</span>
-                                                        <span className="text-[10px] text-slate-500 ml-auto">리뷰</span>
-                                                      </div>
-                                                      {rv.body ? <div className="px-2 py-1.5"><Markdown text={rv.body} /></div> : null}
-                                                    </div>
-                                                  ))}
-                                                  {pr.inline.map((cm, i) => (
-                                                    <div key={`i${i}`} className="rounded border border-slate-700 bg-slate-800/40 overflow-hidden">
-                                                      <div className="flex items-center gap-2 px-2 py-1 bg-slate-800/70 border-b border-slate-700">
-                                                        <span className="text-[11px] font-semibold text-slate-300">{cm.author}</span>
-                                                        <span className="text-[10px] text-slate-500 font-mono truncate">{cm.path}{cm.line ? `:${cm.line}` : ""}</span>
-                                                        <span className="text-[10px] text-slate-500 ml-auto whitespace-nowrap">인라인</span>
-                                                      </div>
-                                                      <div className="px-2 py-1.5"><Markdown text={cm.body} /></div>
-                                                    </div>
-                                                  ))}
-                                                  {pr.comments.map((cm, i) => (
-                                                    <div key={`c${i}`} className="rounded border border-slate-700 bg-slate-800/40 overflow-hidden">
-                                                      <div className="flex items-center gap-2 px-2 py-1 bg-slate-800/70 border-b border-slate-700">
-                                                        <span className="text-[11px] font-semibold text-slate-300">💬 {cm.author}</span>
-                                                        <span className="text-[10px] text-slate-500 ml-auto">코멘트</span>
-                                                      </div>
-                                                      <div className="px-2 py-1.5"><Markdown text={cm.body} /></div>
-                                                    </div>
-                                                  ))}
-                                                </div>
-                                              )}
-                                          </div>
-                                        ))}
                                       </div>
                                     )
                                   )}
