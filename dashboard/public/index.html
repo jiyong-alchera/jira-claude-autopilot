@@ -312,7 +312,7 @@ function ProjectCard({ proj, onDeleted, flash }) {
   const [posting, setPosting] = useState(false);
   const [claudeLog, setClaudeLog] = useState(null);
   const [repoEnv, setRepoEnv] = useState({ repo: "", content: "" });
-  const [reworkMemo, setReworkMemo] = useState("");
+  const [reworkMemos, setReworkMemos] = useState({});   // PR 별 리뷰 반영 메모 { "owner#number": memo }
   const [reviews, setReviews] = useState(null);   // { key, loading, prs:[...] } — PR 리뷰 내용
   const [prs, setPrs] = useState(null);           // { key, loading, list:[...], botLogin } — 카드 1:N PR 목록
   const [prExpanded, setPrExpanded] = useState(""); // PR 목록에서 펼쳐 리뷰/코멘트 보는 PR (owner#number)
@@ -398,9 +398,10 @@ function ProjectCard({ proj, onDeleted, flash }) {
   const runCardNow = async (key, phase) => { const r = await api.post(`/api/cards/${key}/run`, { phase, project: PID }); flash(r.ok ? `${key} ${phase} 즉시 실행 — Claude 실행 로그 확인` : (r.message || "실패")); if (r.ok) showClaudeLog(key, phase); };
   const stopCard = async (key) => { const r = await api.post(`/api/cards/${key}/stop`, { project: PID }); flash(r.ok ? `${key} ${r.message}` : (r.message || "중지 실패")); loadCards(); };
   const reworkOnePr = async (key, pr, thenReview) => {
-    const r = await api.post(`/api/cards/${key}/run`, { phase: "build", rework: true, reviewAfter: !!thenReview, memo: reworkMemo, reworkOwner: pr.owner, reworkNumber: pr.number, project: PID });
+    const prId = `${pr.owner}#${pr.number}`;
+    const r = await api.post(`/api/cards/${key}/run`, { phase: "build", rework: true, reviewAfter: !!thenReview, memo: reworkMemos[prId] || "", reworkOwner: pr.owner, reworkNumber: pr.number, project: PID });
     flash(r.ok ? `${pr.repo} #${pr.number} 리뷰 반영${thenReview ? " → 재리뷰" : ""} 시작(로그 확인)` : (r.message || "실패"));
-    if (r.ok) { setReworkMemo(""); showClaudeLog(key, "build"); loadPrs(key); }
+    if (r.ok) { setReworkMemos((m) => ({ ...m, [prId]: "" })); showClaudeLog(key, "build"); loadPrs(key); }
   };
   const setCardRepos = async (key, repos) => {
     // 낙관적 갱신: Jira JQL 검색 인덱싱 지연으로 재조회가 늦으므로 로컬 라벨을 즉시 반영
@@ -410,14 +411,6 @@ function ProjectCard({ proj, onDeleted, flash }) {
     const r = await api.post(`/api/cards/${key}/repos`, { repos, project: PID });
     flash(r.ok ? `${key} 대상 repo: ${repos.join(", ") || "(없음)"}` : (r.message || "실패"));
     if (!r.ok) loadCards();   // 실패 시 서버 상태로 되돌림
-  };
-  const mergeCard = async (key) => {
-    if (!window.confirm(`${key} 의 '자동화 PR' 을 rebase merge 하고, 자동화 PR 이 모두 병합되면 카드를 완료 처리할까요?\n(사람이 만든 PR 은 건드리지 않습니다. 완료 시 clone 디렉토리도 삭제)`)) return;
-    const r = await api.post(`/api/cards/${key}/merge`, { project: PID });
-    if (r.ok) flash(`${key} 병합 ${r.merged}건${r.doneStatus ? ` · 완료(${r.doneStatus})` : ""}${r.removed?.length ? ` · clone ${r.removed.length}개 정리` : ""}${r.errors?.length ? ` · 경고 ${r.errors.length}` : ""}`);
-    else flash(r.message || (r.errors?.length ? r.errors[0] : "병합 실패(열린 자동화 PR 없음/충돌/권한 확인)"));
-    if (prs && prs.key === key) loadPrs(key);
-    loadCards();
   };
   const loadPrs = async (key) => {
     setPrs({ key, loading: true, list: [], botLogin: "" });
@@ -823,6 +816,11 @@ function ProjectCard({ proj, onDeleted, flash }) {
                                                 {c.assignedToMe && pr.state === "OPEN" && <button onClick={() => mergeOnePr(c.key, pr)} className="text-[11px] px-2 py-0.5 rounded border border-teal-500/40 text-teal-300 hover:bg-teal-500/10 transition">이 PR 병합</button>}
                                                 <a href={pr.url} target="_blank" rel="noreferrer" className="text-[11px] px-2 py-0.5 rounded border border-slate-600 text-slate-300 hover:bg-slate-600/20 transition">열기</a>
                                               </div>
+                                              {c.assignedToMe && pr.isBot && pr.state === "OPEN" && (
+                                                <textarea value={reworkMemos[`${pr.owner}#${pr.number}`] || ""} onChange={(e) => { const id = `${pr.owner}#${pr.number}`, v = e.target.value; setReworkMemos((m) => ({ ...m, [id]: v })); }} spellCheck={false}
+                                                  placeholder="리뷰 반영 메모 (선택) — 이 PR 코멘트로 남기고 반영. 비우면 GitHub·Jira 코멘트만 보고 반영."
+                                                  className="w-full h-14 mt-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs focus:outline-none focus:border-cyan-400" />
+                                              )}
                                               {prExpanded === `${pr.owner}#${pr.number}` && (
                                                 <div className="mt-2 pt-2 border-t border-slate-700/70">
                                                   {reviews && reviews.key === c.key && reviews.loading ? <p className="text-[11px] text-slate-500">불러오는 중…</p>
@@ -838,22 +836,6 @@ function ProjectCard({ proj, onDeleted, flash }) {
                                     )
                                   )}
                                 </div>
-                                {/* 리뷰 반영 메모(선택) — 위 'PR 목록'의 각 PR '리뷰 반영' 버튼에 함께 전달됨. 담당자 전용 */}
-                                {c.assignedToMe && (
-                                <div className="p-2 rounded bg-cyan-500/5 border border-cyan-500/20">
-                                  <div className="text-xs text-cyan-300 mb-1">리뷰 반영 메모 (선택) · 위 <b>PR 목록</b>의 각 PR <b>[리뷰 반영]</b> 실행 시 그 PR 코멘트로 함께 남깁니다</div>
-                                  <textarea value={reworkMemo} onChange={(e) => setReworkMemo(e.target.value)} spellCheck={false}
-                                    placeholder="(선택) 고칠 내용을 적으면 해당 PR 코멘트로 남기고 반영합니다. 비우면 GitHub PR 리뷰·기존 코멘트만 보고 반영."
-                                    className="w-full h-20 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
-                                </div>
-                                )}
-                                {/* PR 병합(rebase) — 담당자 전용 */}
-                                {c.assignedToMe && (
-                                <div className="p-2 rounded bg-teal-500/5 border border-teal-500/20 flex items-center justify-between">
-                                  <span className="text-xs text-teal-300">PR 병합 (자동화 PR 일괄 · rebase merge · 모두 병합되면 카드 완료 + clone 삭제)</span>
-                                  <Btn color="green" onClick={() => mergeCard(c.key)}>PR 병합</Btn>
-                                </div>
-                                )}
                               </div>
                             </div>
                           </div>
