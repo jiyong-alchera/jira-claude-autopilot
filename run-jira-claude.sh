@@ -246,8 +246,13 @@ ${REPO_LIST_TEXT}
   (b) 이슈에 '${TARGET_BRANCH_LABEL}' 라벨을 추가하세요.
   (c) 출력의 '맨 마지막 줄'에 정확히 'TARGET_BRANCH: <브랜치이름>' 한 줄을 출력하세요(시스템이 이 이름으로 원격 브랜치를 생성합니다). 코드는 작성하지 마세요."
 elif [[ -n "${REWORK:-}" ]]; then
-  echo ">> [${ISSUE_KEY}] [REWORK] 기존 PR 리뷰 반영 (대상 repo ${#R_URL[@]}개)"
-  PROMPT="당신은 Jira 이슈 ${ISSUE_KEY} 의 '기존 PR'에 리뷰 피드백을 반영합니다. 새 PR/새 브랜치는 만들지 마세요.
+  echo ">> [${ISSUE_KEY}] [REWORK] 기존 PR 리뷰 반영 (대상 repo ${#R_URL[@]}개)${REWORK_ONLY_OWNER:+ · 대상 PR ${REWORK_ONLY_OWNER}#${REWORK_ONLY_NUM:-}}"
+  REWORK_FOCUS=""
+  if [[ -n "${REWORK_ONLY_OWNER:-}" && -n "${REWORK_ONLY_NUM:-}" ]]; then
+    REWORK_FOCUS="[대상 PR 한정] 이번 리뷰 반영은 오직 '${REWORK_ONLY_OWNER}' 저장소의 PR #${REWORK_ONLY_NUM} 하나에만 수행하세요. 그 외 repo/PR 은 절대 건드리지 마세요.
+"
+  fi
+  PROMPT="${REWORK_FOCUS}당신은 Jira 이슈 ${ISSUE_KEY} 의 '기존 PR'에 리뷰 피드백을 반영합니다. 새 PR/새 브랜치는 만들지 마세요.
 대상 repo 들은 아래 경로에 clone 되어 있습니다(여러 repo 일 수 있음):
 ${REPO_LIST_TEXT}
 

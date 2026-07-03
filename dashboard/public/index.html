@@ -357,15 +357,10 @@ function ProjectCard({ proj, onDeleted, flash }) {
   };
   const runCardNow = async (key, phase) => { const r = await api.post(`/api/cards/${key}/run`, { phase, project: PID }); flash(r.ok ? `${key} ${phase} 즉시 실행 — Claude 실행 로그 확인` : (r.message || "실패")); if (r.ok) showClaudeLog(key, phase); };
   const stopCard = async (key) => { const r = await api.post(`/api/cards/${key}/stop`, { project: PID }); flash(r.ok ? `${key} ${r.message}` : (r.message || "중지 실패")); loadCards(); };
-  const reworkCard = async (key) => {
-    const r = await api.post(`/api/cards/${key}/run`, { phase: "build", rework: true, memo: reworkMemo, project: PID });
-    flash(r.ok ? `${key} 리뷰 반영 시작 — 기존 PR 갱신(로그 확인)` : (r.message || "실패"));
-    if (r.ok) { setReworkMemo(""); showClaudeLog(key, "build"); }
-  };
-  const reworkThenReview = async (key) => {
-    const r = await api.post(`/api/cards/${key}/run`, { phase: "build", rework: true, reviewAfter: true, memo: reworkMemo, project: PID });
-    flash(r.ok ? `${key} 리뷰 반영 → 완료 후 재리뷰 진행(로그 확인)` : (r.message || "실패"));
-    if (r.ok) { setReworkMemo(""); showClaudeLog(key, "build"); }
+  const reworkOnePr = async (key, pr, thenReview) => {
+    const r = await api.post(`/api/cards/${key}/run`, { phase: "build", rework: true, reviewAfter: !!thenReview, memo: reworkMemo, reworkOwner: pr.owner, reworkNumber: pr.number, project: PID });
+    flash(r.ok ? `${pr.repo} #${pr.number} 리뷰 반영${thenReview ? " → 재리뷰" : ""} 시작(로그 확인)` : (r.message || "실패"));
+    if (r.ok) { setReworkMemo(""); showClaudeLog(key, "build"); loadPrs(key); }
   };
   const setCardRepos = async (key, repos) => {
     // 낙관적 갱신: Jira JQL 검색 인덱싱 지연으로 재조회가 늦으므로 로컬 라벨을 즉시 반영
@@ -774,9 +769,11 @@ function ProjectCard({ proj, onDeleted, flash }) {
                                               </div>
                                               <div className="text-[11px] text-slate-300 mt-0.5 truncate">{pr.title}</div>
                                               <div className="text-[10px] text-slate-500 font-mono truncate">{pr.branch}</div>
-                                              <div className="flex gap-2 mt-1">
-                                                {c.assignedToMe && pr.state === "OPEN" && <button onClick={() => mergeOnePr(c.key, pr)} className="text-[11px] px-2 py-0.5 rounded border border-teal-500/40 text-teal-300 hover:bg-teal-500/10 transition">이 PR 병합</button>}
+                                              <div className="flex flex-wrap gap-2 mt-1">
                                                 <button onClick={() => reviewOnePr(c.key, pr)} className="text-[11px] px-2 py-0.5 rounded border border-violet-500/40 text-violet-300 hover:bg-violet-500/10 transition">이 PR 리뷰</button>
+                                                {c.assignedToMe && pr.isBot && pr.state === "OPEN" && <button onClick={() => reworkOnePr(c.key, pr, false)} className="text-[11px] px-2 py-0.5 rounded border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 transition">리뷰 반영</button>}
+                                                {c.assignedToMe && pr.isBot && pr.state === "OPEN" && <button onClick={() => reworkOnePr(c.key, pr, true)} className="text-[11px] px-2 py-0.5 rounded border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 transition">반영+재리뷰</button>}
+                                                {c.assignedToMe && pr.state === "OPEN" && <button onClick={() => mergeOnePr(c.key, pr)} className="text-[11px] px-2 py-0.5 rounded border border-teal-500/40 text-teal-300 hover:bg-teal-500/10 transition">이 PR 병합</button>}
                                                 <a href={pr.url} target="_blank" rel="noreferrer" className="text-[11px] px-2 py-0.5 rounded border border-slate-600 text-slate-300 hover:bg-slate-600/20 transition">열기</a>
                                               </div>
                                             </div>
@@ -845,18 +842,12 @@ function ProjectCard({ proj, onDeleted, flash }) {
                                     )
                                   )}
                                 </div>
-                                {/* 리뷰 반영(기존 PR 갱신) — 담당자 전용 */}
+                                {/* 리뷰 반영 메모(선택) — 위 'PR 목록'의 각 PR '리뷰 반영' 버튼에 함께 전달됨. 담당자 전용 */}
                                 {c.assignedToMe && (
                                 <div className="p-2 rounded bg-cyan-500/5 border border-cyan-500/20">
-                                  <div className="flex items-center justify-between mb-1 gap-2">
-                                    <span className="text-xs text-cyan-300">리뷰 반영 (기존 PR 갱신 · 새 PR 안 만듦)</span>
-                                    <div className="flex gap-2">
-                                      <Btn color="indigo" onClick={() => reworkCard(c.key)}>리뷰 반영 실행</Btn>
-                                      <Btn color="violet" onClick={() => reworkThenReview(c.key)}>리뷰 반영 및 재리뷰</Btn>
-                                    </div>
-                                  </div>
+                                  <div className="text-xs text-cyan-300 mb-1">리뷰 반영 메모 (선택) · 위 <b>PR 목록</b>의 각 PR <b>[리뷰 반영]</b> 실행 시 그 PR 코멘트로 함께 남깁니다</div>
                                   <textarea value={reworkMemo} onChange={(e) => setReworkMemo(e.target.value)} spellCheck={false}
-                                    placeholder="(선택) 고칠 내용을 적으면 PR 코멘트로 남기고 반영합니다. 비우면 GitHub PR 리뷰·기존 코멘트만 보고 반영."
+                                    placeholder="(선택) 고칠 내용을 적으면 해당 PR 코멘트로 남기고 반영합니다. 비우면 GitHub PR 리뷰·기존 코멘트만 보고 반영."
                                     className="w-full h-20 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
                                 </div>
                                 )}
