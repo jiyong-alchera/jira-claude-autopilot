@@ -396,7 +396,7 @@ function ProjectCard({ proj, onDeleted, flash }) {
     else flash(r.message || "등록 실패");
   };
   const runCardNow = async (key, phase) => { const r = await api.post(`/api/cards/${key}/run`, { phase, project: PID }); flash(r.ok ? `${key} ${phase} 즉시 실행 — Claude 실행 로그 확인` : (r.message || "실패")); if (r.ok) showClaudeLog(key, phase); };
-  const stopCard = async (key) => { const r = await api.post(`/api/cards/${key}/stop`, { project: PID }); flash(r.ok ? `${key} ${r.message}` : (r.message || "중지 실패")); loadCards(); };
+  const stopCard = async (key, phase) => { const r = await api.post(`/api/cards/${key}/stop`, { phase, project: PID }); flash(r.ok ? `${key} ${phase ? phase + " " : ""}${r.message}` : (r.message || "중지 실패")); loadCards(); };
   const reworkOnePr = async (key, pr, thenReview) => {
     const prId = `${pr.owner}#${pr.number}`;
     const r = await api.post(`/api/cards/${key}/run`, { phase: "build", rework: true, reviewAfter: !!thenReview, memo: reworkMemos[prId] || "", reworkOwner: pr.owner, reworkNumber: pr.number, project: PID });
@@ -672,15 +672,19 @@ function ProjectCard({ proj, onDeleted, flash }) {
                         {detailLoading ? <p className="text-slate-400 text-sm">불러오는 중…</p> : detail && detail.error ? <p className="text-rose-400 text-sm">{detail.error}</p> : detail && (
                           <div>
                             <div className="flex flex-wrap items-center gap-2 mb-3 pb-3 border-b border-slate-700">
-                              <span className="text-xs text-slate-400">이 카드만 즉시 실행:</span>
-                              {c.assignedToMe && <Btn color="indigo" onClick={() => runCardNow(c.key, "plan")}>plan</Btn>}
-                              {c.assignedToMe && <Btn color="indigo" onClick={() => runCardNow(c.key, "build")}>build</Btn>}
-                              <Btn color="violet" onClick={() => runCardNow(c.key, "review")}>review</Btn>
-                              {c.stage === "processing" && <Btn color="red" onClick={() => stopCard(c.key)}>■ 중지({c.proc})</Btn>}
-                              <span className="text-xs text-slate-400 ml-3">Claude 실행 로그:</span>
-                              {c.assignedToMe && <Btn color="slate" onClick={() => showClaudeLog(c.key, "plan")}>plan</Btn>}
-                              {c.assignedToMe && <Btn color="slate" onClick={() => showClaudeLog(c.key, "build")}>build</Btn>}
-                              <Btn color="slate" onClick={() => showClaudeLog(c.key, "review")}>review</Btn>
+                              <span className="text-xs text-slate-400 mr-1">이 카드 단계별 (실행·로그·중지):</span>
+                              {["plan", "build", "review"].map((ph) => {
+                                if ((ph === "plan" || ph === "build") && !c.assignedToMe) return null;   // 비할당 카드는 review 만
+                                const running = (c.procPhases || []).includes(ph);
+                                return (
+                                  <div key={ph} className={`flex items-center gap-1 rounded-lg border px-2 py-1 ${running ? "border-indigo-500/50 bg-indigo-500/10" : "border-slate-700 bg-slate-800/40"}`}>
+                                    <span className="text-[11px] font-semibold text-slate-300 w-9">{ph}</span>
+                                    <button onClick={() => runCardNow(c.key, ph)} title={`${ph} 즉시 실행`} className="text-[11px] px-2 py-0.5 rounded border border-indigo-500/40 text-indigo-300 hover:bg-indigo-500/10 transition">실행</button>
+                                    <button onClick={() => showClaudeLog(c.key, ph)} title={`${ph} 실행 로그`} className="text-[11px] px-2 py-0.5 rounded border border-slate-600 text-slate-300 hover:bg-slate-600/20 transition">로그</button>
+                                    {running && <button onClick={() => stopCard(c.key, ph)} title={`${ph} 중지`} className="text-[11px] px-2 py-0.5 rounded border border-rose-500/50 text-rose-300 hover:bg-rose-500/10 transition">■ 중지</button>}
+                                  </div>
+                                );
+                              })}
                             </div>
                             {!c.assignedToMe && (
                               <div className="mb-3 px-3 py-2 rounded-lg border border-amber-500/40 bg-amber-500/10 text-xs text-amber-200">

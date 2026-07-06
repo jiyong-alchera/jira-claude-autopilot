@@ -469,6 +469,7 @@ app.post("/api/cards/:key/run", async (req, res) => {
 });
 
 // 처리 중인 카드의 claude 작업 중지 — 락 PID 의 프로세스 트리(run-jira-claude.sh→claude→도구)를 종료.
+// body.phase 지정 시 그 단계만: 'review' → <KEY>.review.lock, 'plan'/'build' → <KEY>.lock. 없으면 전부.
 // (루프/run-cycle/다른 카드는 건드리지 않음)
 app.post("/api/cards/:key/stop", (req, res) => {
   const key = req.params.key;
@@ -476,9 +477,10 @@ app.post("/api/cards/:key/stop", (req, res) => {
   try {
     const { cfg } = resolveProject(req);
     const stateDir = path.join(cfg.cloneBase || path.join(cfg.workDir || SCRIPTS_DIR, "repos"), ".state");
-    // build/plan(<KEY>.lock)·review(<KEY>.review.lock) 중 살아있는 락을 모두 중지.
+    const reqPhase = (req.body && req.body.phase) || req.query.phase || "";
+    const suffixes = reqPhase === "review" ? [".review.lock"] : (reqPhase === "plan" || reqPhase === "build") ? [".lock"] : [".lock", ".review.lock"];
     const alive = [];
-    for (const suffix of [".lock", ".review.lock"]) {
+    for (const suffix of suffixes) {
       const lockDir = path.join(stateDir, `${key}${suffix}`);
       let pid = null; try { pid = parseInt(fs.readFileSync(`${lockDir}.pid`, "utf8").trim(), 10); } catch {}
       if (pid && isAlive(pid)) { let phase = ""; try { phase = fs.readFileSync(`${lockDir}.phase`, "utf8").trim(); } catch {} alive.push({ lockDir, pid, phase }); }
@@ -715,16 +717,18 @@ app.get("/api/cards", async (req, res) => {
     const myId = await myAccountId(cfg, cred);
     const stateDir = path.join(cfg.cloneBase || path.join(cfg.workDir || SCRIPTS_DIR, "repos"), ".state");
     // 처리 중 여부: 카드별 락 + '살아있는' PID 확인. build/plan(<KEY>.lock)·review(<KEY>.review.lock) 둘 다 인식.
-    // (프로세스가 죽은 스테일 락은 '처리 중'으로 보지 않는다.)
-    const procInfo = (key) => {
+    // 여러 단계가 동시에 돌 수 있으므로(예: build+review) 활성 단계 목록을 반환. 스테일 락(죽은 PID)은 제외.
+    const procPhases = (key) => {
+      const phases = [];
       for (const suffix of [".lock", ".review.lock"]) {
         const lock = path.join(stateDir, `${key}${suffix}`);
         if (!fs.existsSync(lock)) continue;
         let pid = null; try { pid = parseInt(fs.readFileSync(`${lock}.pid`, "utf8").trim(), 10); } catch {}
         if (pid && !isAlive(pid)) continue;   // 죽은 프로세스(스테일 락) → 무시
-        try { return fs.readFileSync(`${lock}.phase`, "utf8").trim() || "run"; } catch { return "run"; }
+        let ph = "run"; try { ph = fs.readFileSync(`${lock}.phase`, "utf8").trim() || "run"; } catch {}
+        phases.push(ph);
       }
-      return null;
+      return phases;
     };
     const labelStage = (it) => {
       if (it.labels.includes(cfg.failedLabel)) return "failed";
@@ -739,12 +743,13 @@ app.get("/api/cards", async (req, res) => {
       const assignee = i.fields.assignee;
       const assignedToMe = !!myId && !!assignee && assignee.accountId === myId;
       const it = { key: i.key, summary: i.fields.summary, status: i.fields.status?.name, labels: i.fields.labels || [], url: `https://${cfg.jiraSite}/browse/${i.key}`, assignedToMe, assignee: (assignee && assignee.displayName) || null };
-      const proc = procInfo(i.key);
+      const phases = procPhases(i.key);
+      const proc = phases.join("+") || null;   // 배지 표기용(예: "build+review")
       let stage;
-      if (proc) stage = "processing";                                        // 실행 중(살아있는 락)이면 최우선 → 완료 상태여도 중지 가능
+      if (phases.length) stage = "processing";                               // 실행 중(살아있는 락)이면 최우선 → 완료 상태여도 중지 가능
       else if (catKey === "done" || doneStatusList(cfg).includes(it.status)) stage = "done"; // 상태 카테고리 Done 이거나 설정 완료 상태명(복수 가능) 일치
       else stage = labelStage(it);
-      return { ...it, stage, proc };
+      return { ...it, stage, proc, procPhases: phases };
     });
     res.json({ ok: true, issues });
   } catch (e) { fail(res, e); }
