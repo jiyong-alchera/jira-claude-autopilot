@@ -295,6 +295,7 @@ function ProjectCard({ proj, onDeleted, flash }) {
   const [creds, setCreds] = useState({});
   const [credInput, setCredInput] = useState({ anthropicApiKey: "", githubToken: "", atlassianEmail: "", atlassianToken: "", slackWebhookUrl: "" });
   const [jiraMeta, setJiraMeta] = useState({ issueTypes: [], epics: [], loaded: false, err: "" });
+  const [jiraStatuses, setJiraStatuses] = useState({ list: [], loaded: false, err: "" });   // 상태→단계 매핑 UI용
   const [newCard, setNewCard] = useState({ issueType: "", summary: "", description: "", epicKey: "", parentInput: "", addTriggerLabel: true, assignSelf: true, attachments: [], repos: [], env: "" });
   const [creating, setCreating] = useState(false);
   const [refining, setRefining] = useState(false);
@@ -336,6 +337,10 @@ function ProjectCard({ proj, onDeleted, flash }) {
     const r = await api.get(withP("/api/jira/meta"));
     if (r.ok) { setJiraMeta({ issueTypes: r.issueTypes || [], epics: r.epics || [], loaded: true, err: "" }); setNewCard((p) => p.issueType ? p : { ...p, issueType: (r.issueTypes.find((t) => t.name === "Task") || r.issueTypes[0] || {}).name || "" }); }
     else setJiraMeta({ issueTypes: [], epics: [], loaded: true, err: r.message || "메타 조회 실패" });
+  };
+  const loadStatuses = async () => {
+    const r = await api.get(withP("/api/jira/statuses"));
+    setJiraStatuses(r.ok ? { list: r.statuses || [], loaded: true, err: "" } : { list: [], loaded: true, err: r.message || "상태 조회 실패" });
   };
   useEffect(() => { loadCreds(); loadMeta(); }, []);
   // 카드 상태 자동 갱신: 마운트 시 1회 + 60초마다(프로젝트 키 있을 때만). 수동 "조회"도 그대로 사용 가능.
@@ -536,6 +541,38 @@ function ProjectCard({ proj, onDeleted, flash }) {
         })}
         <p className="text-xs text-slate-500 mt-1">name 은 카드 라벨(repo_&lt;name&gt;)에 쓰이니 짧은 슬러그 권장. repo 마다 'env 대상경로'와 'env' 내용을 따로 지정 가능. env 우선순위: 카드 전용(card-envs/&lt;KEY&gt;.env) &gt; repo 전용.</p>
       </div>
+      </SubSection>
+
+      {/* 상태 → 단계 매핑 */}
+      <SubSection title="상태 → 단계 매핑" right={<Btn color="slate" onClick={loadStatuses}>{jiraStatuses.loaded ? "상태 새로고침" : "상태 불러오기"}</Btn>}>
+        <p className="text-xs text-slate-500 mb-2">이 프로젝트의 Jira 상태 파이프라인입니다. 각 상태를 원하는 <b>단계</b>로 매핑하세요(예: <code>QA READY → 완료</code>). '자동'이면 라벨/기본 규칙으로 판정합니다. 설정 저장 시 반영.</p>
+        {!config.projectKey && <p className="text-amber-300/80 text-sm mb-2">프로젝트 키를 먼저 설정·저장하세요.</p>}
+        {jiraStatuses.err && <p className="text-rose-400 text-sm mb-2">{jiraStatuses.err}</p>}
+        {!jiraStatuses.loaded ? <p className="text-slate-500 text-sm">‘상태 불러오기’를 눌러 상태 목록을 가져오세요.</p>
+          : jiraStatuses.list.length === 0 ? <p className="text-slate-500 text-sm">상태가 없습니다.</p>
+          : (
+            <div className="space-y-1">
+              {jiraStatuses.list.map((s) => {
+                const catCls = s.category === "done" ? "text-emerald-400" : s.category === "new" ? "text-slate-400" : "text-amber-400";
+                const cur = (config.statusStageMap || {})[s.name] || "";
+                return (
+                  <div key={s.name} className="flex items-center gap-2 text-sm">
+                    <span className="flex-1 truncate"><span className={`text-[10px] mr-1 ${catCls}`}>●</span>{s.name} <span className="text-[10px] text-slate-500">[{s.category}]</span></span>
+                    <select value={cur} onChange={(e) => { const v = e.target.value, m = { ...(config.statusStageMap || {}) }; if (v) m[s.name] = v; else delete m[s.name]; setConfig({ ...config, statusStageMap: m }); }}
+                      className="w-40 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs focus:outline-none focus:border-indigo-400">
+                      <option value="">자동 (라벨/기본)</option>
+                      <option value="plan-ready">질문 대기</option>
+                      <option value="awaiting-answer">답변 대기</option>
+                      <option value="build-ready">개발 대기</option>
+                      <option value="await-merge">병합 대기</option>
+                      <option value="done">완료</option>
+                    </select>
+                  </div>
+                );
+              })}
+              <p className="text-[11px] text-slate-500 mt-1">변경 후 위 <b>설정 저장</b> 버튼을 눌러야 반영됩니다. (실행 중 카드는 항상 '처리 중'이 우선)</p>
+            </div>
+          )}
       </SubSection>
 
       {/* 자격증명 (프로젝트별) */}

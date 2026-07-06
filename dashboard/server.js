@@ -40,6 +40,7 @@ const DEFAULT_CONFIG = {
   triggerLabel: "claude-work",
   triggerText: "claude-work",
   doneStatus: "DEV COMPLETED",
+  statusStageMap: {},   // { "<Jira 상태명>": "<단계>" } — 특정 상태를 특정 단계로 강제 매핑(설정 UI)
   plannedLabel: "claude-planned",
   answeredLabel: "claude-answered",
   failedLabel: "claude-failed",
@@ -708,6 +709,20 @@ async function myAccountId(cfg, cred) {
   myselfCache.set(k, id);
   return id;
 }
+// 프로젝트 상태 파이프라인 조회 — 설정의 '상태 → 단계 매핑' UI 에서 사용
+app.get("/api/jira/statuses", async (req, res) => {
+  try {
+    const { cfg, cred } = resolveProject(req);
+    if (!cfg.projectKey) throw new Error("프로젝트 키가 설정되지 않았습니다.");
+    const data = await jiraReq("GET", `/rest/api/3/project/${encodeURIComponent(cfg.projectKey)}/statuses`, null, cfg, cred);
+    const seen = new Set(), statuses = [];
+    for (const t of (data || [])) for (const s of (t.statuses || [])) {
+      if (seen.has(s.name)) continue; seen.add(s.name);
+      statuses.push({ name: s.name, category: (s.statusCategory && s.statusCategory.key) || "" });
+    }
+    res.json({ ok: true, statuses });
+  } catch (e) { fail(res, e); }
+});
 app.get("/api/cards", async (req, res) => {
   try {
     const { cfg, cred } = resolveProject(req);
@@ -745,8 +760,10 @@ app.get("/api/cards", async (req, res) => {
       const it = { key: i.key, summary: i.fields.summary, status: i.fields.status?.name, labels: i.fields.labels || [], url: `https://${cfg.jiraSite}/browse/${i.key}`, assignedToMe, assignee: (assignee && assignee.displayName) || null };
       const phases = procPhases(i.key);
       const proc = phases.join("+") || null;   // 배지 표기용(예: "build+review")
+      const mapped = (cfg.statusStageMap || {})[it.status];   // 설정에서 이 상태를 특정 단계로 강제 매핑
       let stage;
       if (phases.length) stage = "processing";                               // 실행 중(살아있는 락)이면 최우선 → 완료 상태여도 중지 가능
+      else if (mapped) stage = mapped;                                       // 상태→단계 매핑(예: QA READY → done)
       else if (catKey === "done" || doneStatusList(cfg).includes(it.status)) stage = "done"; // 상태 카테고리 Done 이거나 설정 완료 상태명(복수 가능) 일치
       else stage = labelStage(it);
       return { ...it, stage, proc, procPhases: phases };
