@@ -101,7 +101,7 @@ function projectEnv(p, cred) {
   env.TRIGGER_MODE = cfg.triggerMode || "label";
   env.TRIGGER_LABEL = cfg.triggerLabel || "claude-work";
   env.TRIGGER_TEXT = cfg.triggerText;
-  env.DONE_STATUS = cfg.doneStatus;
+  env.DONE_STATUS = lib.effectiveDoneStatuses(cfg).join(",");   // doneStatus ∪ 매핑 완료
   env.PLANNED_LABEL = cfg.plannedLabel;
   env.ANSWERED_LABEL = cfg.answeredLabel || "claude-answered";
   env.FAILED_LABEL = cfg.failedLabel || "claude-failed";

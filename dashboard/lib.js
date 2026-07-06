@@ -66,20 +66,25 @@ function triggerClause(cfg) {
   return cfg.triggerMode === "text" ? `text ~ "${cfg.triggerText}"` : `labels = "${cfg.triggerLabel}"`;
 }
 
-// 완료 상태명(복수 허용): 쉼표로 구분해 여러 개 지정 가능. 첫 번째가 병합 시 전환 대상(주 완료 상태),
-// 전체가 탐지 제외·'완료' 단계 판정에 쓰인다. 배열/문자열 모두 수용.
+// 완료 전환 대상(doneStatus): 쉼표 구분 복수 허용. 첫 번째가 병합 시 전환 대상(주 완료 상태). 배열/문자열 수용.
 function doneStatusList(cfg) {
   const raw = cfg && cfg.doneStatus;
   const arr = Array.isArray(raw) ? raw : String(raw == null ? "" : raw).split(",");
   return arr.map((s) => String(s).trim()).filter(Boolean);
 }
+// '완료로 인식'할 상태 집합 = doneStatus(전환 대상) ∪ 상태→단계 매핑에서 '완료(done)'로 지정한 상태들.
+// 탐지 제외·'완료' 단계 판정에 쓰인다(중복 제거).
+function effectiveDoneStatuses(cfg) {
+  const mapped = Object.entries((cfg && cfg.statusStageMap) || {}).filter(([, v]) => v === "done").map(([k]) => k);
+  return [...new Set([...doneStatusList(cfg), ...mapped])];
+}
 
 function detectJql(mode, cfg) {
   const proj = cfg.projectKey ? ` AND project = "${cfg.projectKey}"` : "";
   const failed = ` AND (labels != "${cfg.failedLabel}" OR labels IS EMPTY)`;
-  // 완료 제외: 상태 카테고리 Done + 설정한 완료 상태명(doneStatus, 복수 가능) 모두. (워크플로마다 완료가
-  // 'Done 카테고리'일 수도, 'DEV COMPLETED' 처럼 카테고리가 다른 커스텀 상태일 수도 있어 둘 다 제외)
-  const dones = doneStatusList(cfg);
+  // 완료 제외: 상태 카테고리 Done + '완료로 인식'하는 상태들(doneStatus ∪ 매핑 완료). (워크플로마다 완료가
+  // 'Done 카테고리'일 수도, 'DEV COMPLETED'/'QA READY' 처럼 카테고리가 다른 커스텀 상태일 수도 있어 둘 다 제외)
+  const dones = effectiveDoneStatuses(cfg);
   const doneName = dones.length === 1 ? ` AND status != "${dones[0]}"`
     : dones.length > 1 ? ` AND status NOT IN (${dones.map((s) => `"${s}"`).join(", ")})` : "";
   const prLabel = cfg.prOpenLabel || "claude-pr";
@@ -282,7 +287,7 @@ function createStore({ projectsPath, credsPath, configPath, credPath, defaultCon
 
 module.exports = {
   DEFAULT_CREDS, readJson, writeJson, slugify, triggerClause, detectJql,
-  adfToText, adfSegments, toADF, mdInline, mdToADF, buildReplyADF, maskCreds, applyCreds, createStore, doneStatusList,
+  adfToText, adfSegments, toADF, mdInline, mdToADF, buildReplyADF, maskCreds, applyCreds, createStore, doneStatusList, effectiveDoneStatuses,
   REPO_LABEL_PREFIX, repoNameFromUrl, normalizeRepos, cardRepos, REVIEW_APPROVED_MARKER,
   loadOrCreateEnvKey, encryptEnv, decryptEnv,
 };

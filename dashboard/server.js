@@ -60,7 +60,7 @@ const DEFAULT_CONFIG = {
 
 // ----- 순수 로직 + 프로젝트 스토어 (단위 테스트 대상은 lib.js 로 분리) -----
 const lib = require("./lib");
-const { slugify, triggerClause, detectJql, adfToText, adfSegments, toADF, mdToADF, buildReplyADF, maskCreds, applyCreds, normalizeRepos, cardRepos, REPO_LABEL_PREFIX, doneStatusList } = lib;
+const { slugify, triggerClause, detectJql, adfToText, adfSegments, toADF, mdToADF, buildReplyADF, maskCreds, applyCreds, normalizeRepos, cardRepos, REPO_LABEL_PREFIX, doneStatusList, effectiveDoneStatuses } = lib;
 // repo 별 env 파일 경로(repo 전용 env 만 사용; 없으면 미복사 — run-jira 가 -f 로 확인)
 function repoEnvFile(cfg, repoName) { return path.join(cfg.workDir || SCRIPTS_DIR, `work-${cfg.id}-${repoName}.env`); }
 function repoEnvSrc(cfg, repoName) { return repoEnvFile(cfg, repoName); }
@@ -142,7 +142,7 @@ function scriptEnv(id) {
   env.TRIGGER_MODE = cfg.triggerMode || "label";
   env.TRIGGER_LABEL = cfg.triggerLabel || "claude-work";
   env.TRIGGER_TEXT = cfg.triggerText;
-  env.DONE_STATUS = cfg.doneStatus;
+  env.DONE_STATUS = effectiveDoneStatuses(cfg).join(",");   // doneStatus ∪ 매핑 완료(탐지 제외·게이트에 사용)
   env.PLANNED_LABEL = cfg.plannedLabel;
   env.ANSWERED_LABEL = cfg.answeredLabel || "claude-answered";
   env.FAILED_LABEL = cfg.failedLabel || "claude-failed";
@@ -339,7 +339,7 @@ async function transitionToDone(key, cfg, cred) {
   const t = await jiraReq("GET", `/rest/api/3/issue/${encodeURIComponent(key)}/transitions`, null, cfg, cred);
   const trs = t.transitions || [];
   let tr = null;
-  for (const name of doneStatusList(cfg)) { tr = trs.find((x) => x.to && x.to.name === name); if (tr) break; }  // 설정 순서(첫번째=주 완료)대로
+  for (const name of effectiveDoneStatuses(cfg)) { tr = trs.find((x) => x.to && x.to.name === name); if (tr) break; }  // doneStatus(주 완료) → 매핑 완료 순으로 전환 시도
   if (!tr) tr = trs.find((x) => x.to && x.to.statusCategory && x.to.statusCategory.key === "done");
   if (!tr) throw new Error(`완료로 가는 transition 없음(가능: ${trs.map((x) => x.name).join(", ")})`);
   await jiraReq("POST", `/rest/api/3/issue/${encodeURIComponent(key)}/transitions`, { transition: { id: tr.id } }, cfg, cred);
@@ -764,7 +764,7 @@ app.get("/api/cards", async (req, res) => {
       let stage;
       if (phases.length) stage = "processing";                               // 실행 중(살아있는 락)이면 최우선 → 완료 상태여도 중지 가능
       else if (mapped) stage = mapped;                                       // 상태→단계 매핑(예: QA READY → done)
-      else if (catKey === "done" || doneStatusList(cfg).includes(it.status)) stage = "done"; // 상태 카테고리 Done 이거나 설정 완료 상태명(복수 가능) 일치
+      else if (catKey === "done" || effectiveDoneStatuses(cfg).includes(it.status)) stage = "done"; // 상태 카테고리 Done 이거나 '완료로 인식' 상태(doneStatus ∪ 매핑 완료)
       else stage = labelStage(it);
       return { ...it, stage, proc, procPhases: phases };
     });

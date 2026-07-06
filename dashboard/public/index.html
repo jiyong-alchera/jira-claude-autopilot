@@ -477,8 +477,6 @@ function ProjectCard({ proj, onDeleted, flash }) {
               info={"text 모드에서 자동화 대상을 판정하는 키워드입니다.\n\n카드 설명(본문)에 이 텍스트가 포함되면 대상으로 탐지합니다. 예: claude-work"} />
           : <Field label="트리거 라벨" value={config.triggerLabel} onChange={(v) => setConfig({ ...config, triggerLabel: v })} placeholder="claude-work"
               info={"label 모드에서 자동화 대상을 표시하는 Jira 라벨입니다. 기본: claude-work\n\n이 라벨이 붙은 카드만 plan/build 대상으로 탐지합니다. Jira에서 카드에 이 라벨을 달아 자동화를 시작하세요."} />}
-        <Field label="완료 상태명(쉼표로 복수 지정)" value={config.doneStatus} onChange={(v) => setConfig({ ...config, doneStatus: v })} placeholder="DEV COMPLETED, Done"
-          info={"완료로 인식할 Jira 상태명입니다. 쉼표로 여러 개 지정할 수 있어요. 예: DEV COMPLETED, Done, QA COMPLETED\n\n• 전체: 이 상태의 카드는 탐지에서 제외되고 '완료'로 표시됩니다.\n• 첫 번째 값: 대시보드에서 PR 병합 시 카드를 전환할 '주 완료 상태'입니다."} />
         <Field label="plan 라벨" value={config.plannedLabel} onChange={(v) => setConfig({ ...config, plannedLabel: v })}
           info={"plan 단계가 끝난 카드에 붙는 라벨입니다. 기본: claude-planned\n\n같은 카드를 plan에서 중복 처리하지 않게 하고, build 진입 게이트(planned+answered)의 한 조건이 됩니다. 보통 기본값 그대로 두세요."} />
         <Field label="주기(초)" type="number" value={config.intervalSeconds} onChange={(v) => setConfig({ ...config, intervalSeconds: parseInt(v || "3600", 10) })}

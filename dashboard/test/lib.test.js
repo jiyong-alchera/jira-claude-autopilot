@@ -50,6 +50,17 @@ test("detectJql: 프로젝트 키 없으면 project 필터 없음", () => {
   assert.doesNotMatch(jql, /project =/);
 });
 
+test("effectiveDoneStatuses: doneStatus ∪ 상태매핑 완료(done)", () => {
+  const cfg = { doneStatus: "DEV COMPLETED", statusStageMap: { "QA READY": "done", "IN QA REVIEW": "done", "진행 중": "build-ready" } };
+  const eff = lib.effectiveDoneStatuses(cfg);
+  assert.deepEqual(eff.sort(), ["DEV COMPLETED", "IN QA REVIEW", "QA READY"].sort());
+  // 매핑 완료 상태가 탐지 제외(status NOT IN)에 포함
+  const jql = lib.detectJql("plan", { ...cfg, triggerMode: "label", triggerLabel: "cw", plannedLabel: "P", failedLabel: "F" });
+  assert.match(jql, /status NOT IN \(/);
+  assert.match(jql, /"QA READY"/);
+  assert.match(jql, /"DEV COMPLETED"/);
+});
+
 test("doneStatusList: 쉼표 구분 복수 + 트림 + 빈값 제거, 배열도 수용", () => {
   assert.deepEqual(lib.doneStatusList({ doneStatus: "DEV COMPLETED" }), ["DEV COMPLETED"]);
   assert.deepEqual(lib.doneStatusList({ doneStatus: " DEV COMPLETED , Done ,, Closed " }), ["DEV COMPLETED", "Done", "Closed"]);
