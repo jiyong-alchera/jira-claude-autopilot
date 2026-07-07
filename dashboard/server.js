@@ -915,6 +915,8 @@ app.get("/api/jira/issue/:key", async (req, res) => {
       }
     });
     const comments = (cs.comments || []).map((c) => ({ id: c.id, author: (c.author && c.author.displayName) || "?", accountId: c.author && c.author.accountId, created: c.created, body: adfToText(c.body), bodySegments: adfSegments(c.body, imgByName, images) }));
+    let transitions = [];   // 현재 상태에서 워크플로상 갈 수 있는 상태(수동 전환 드롭다운용)
+    try { const t = await jiraReq("GET", `/rest/api/3/issue/${encodeURIComponent(key)}/transitions`, null, cfg, cred); transitions = (t.transitions || []).map((x) => ({ id: x.id, to: (x.to && x.to.name) || x.name })); } catch {}
     res.json({
       ok: true, key,
       summary: issue.fields && issue.fields.summary,
@@ -922,7 +924,7 @@ app.get("/api/jira/issue/:key", async (req, res) => {
       labels: (issue.fields && issue.fields.labels) || [],
       description: adfToText(issue.fields && issue.fields.description),
       descriptionSegments: adfSegments(issue.fields && issue.fields.description, imgByName, images),
-      comments, url: `https://${cfg.jiraSite}/browse/${key}`,
+      comments, transitions, url: `https://${cfg.jiraSite}/browse/${key}`,
     });
   } catch (e) { fail(res, e); }
 });
@@ -959,6 +961,19 @@ app.post("/api/jira/issue/:key/comment", async (req, res) => {
       try { movedTo = await transitionToStageStatus(key, cfg, cred, "build-ready"); } catch {}
     }
     res.json({ ok: true, movedTo });
+  } catch (e) { fail(res, e); }
+});
+
+// 카드의 Jira 상태 수동 전환(대시보드에서 직접) — transitionId 는 상세 응답의 transitions[].id
+app.post("/api/jira/issue/:key/transition", async (req, res) => {
+  try {
+    const { cfg, cred } = resolveProject(req);
+    const key = req.params.key;
+    const transitionId = (req.body || {}).transitionId;
+    if (!transitionId) throw new Error("전환 ID가 필요합니다.");
+    await jiraReq("POST", `/rest/api/3/issue/${encodeURIComponent(key)}/transitions`, { transition: { id: String(transitionId) } }, cfg, cred);
+    const issue = await jiraReq("GET", `/rest/api/3/issue/${encodeURIComponent(key)}?fields=status`, null, cfg, cred);
+    res.json({ ok: true, status: issue.fields && issue.fields.status && issue.fields.status.name });
   } catch (e) { fail(res, e); }
 });
 
