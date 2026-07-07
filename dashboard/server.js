@@ -345,6 +345,18 @@ async function transitionToDone(key, cfg, cred) {
   await jiraReq("POST", `/rest/api/3/issue/${encodeURIComponent(key)}/transitions`, { transition: { id: tr.id } }, cfg, cred);
   return tr.to.name;
 }
+// statusStageMap 에서 특정 단계(stage)로 매핑된 Jira 상태로 전환(best-effort). 매핑/전환 없으면 null.
+async function transitionToStageStatus(key, cfg, cred, stage) {
+  const names = Object.entries((cfg && cfg.statusStageMap) || {}).filter(([, v]) => v === stage).map(([k]) => k);
+  if (!names.length) return null;
+  const t = await jiraReq("GET", `/rest/api/3/issue/${encodeURIComponent(key)}/transitions`, null, cfg, cred);
+  const trs = t.transitions || [];
+  let tr = null;
+  for (const name of names) { tr = trs.find((x) => x.to && x.to.name === name); if (tr) break; }
+  if (!tr) return null;
+  await jiraReq("POST", `/rest/api/3/issue/${encodeURIComponent(key)}/transitions`, { transition: { id: tr.id } }, cfg, cred);
+  return tr.to.name;
+}
 // 카드 전용 env: 로컬 card-envs/<KEY>.env 만 읽는다(Jira 폴백 없음). 없으면 null → repo 전용 env 사용.
 function resolveCardEnv(key, cfg) {
   const p = cardEnvLocal(cfg, key);
@@ -940,10 +952,13 @@ app.post("/api/jira/issue/:key/comment", async (req, res) => {
     if (!body) throw new Error("답변 내용을 입력하세요.");
     const replyTo = (req.body || {}).replyTo;
     await jiraReq("POST", `/rest/api/3/issue/${encodeURIComponent(key)}/comment`, { body: replyTo ? buildReplyADF(body, replyTo) : toADF(body) }, cfg, cred);
+    let movedTo = null;
     if ((req.body || {}).markAnswered) {
       await jiraReq("PUT", `/rest/api/3/issue/${encodeURIComponent(key)}`, { update: { labels: [{ add: cfg.answeredLabel || "claude-answered" }] } }, cfg, cred);
+      // 답변 완료 → '개발 대기(build-ready)' 로 매핑된 Jira 상태로 전환(매핑돼 있고 전환 가능할 때)
+      try { movedTo = await transitionToStageStatus(key, cfg, cred, "build-ready"); } catch {}
     }
-    res.json({ ok: true });
+    res.json({ ok: true, movedTo });
   } catch (e) { fail(res, e); }
 });
 

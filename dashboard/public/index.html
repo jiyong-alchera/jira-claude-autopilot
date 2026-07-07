@@ -397,7 +397,7 @@ function ProjectCard({ proj, onDeleted, flash }) {
     setPosting(true);
     const r = await api.post(`/api/jira/issue/${expandedKey}/comment`, { body: reply, markAnswered: replyAnswered, replyTo: replyTarget || undefined, project: PID });
     setPosting(false);
-    if (r.ok) { flash("답변 등록됨" + (replyAnswered ? " (claude-answered)" : "")); setReply(""); setReplyTarget(null); const d = await api.get(withP(`/api/jira/issue/${expandedKey}`)); if (d.ok) setDetail(d); loadCards(); }
+    if (r.ok) { flash("답변 등록됨" + (replyAnswered ? " (claude-answered" + (r.movedTo ? ` · 상태→${r.movedTo}` : "") + ")" : "")); setReply(""); setReplyTarget(null); const d = await api.get(withP(`/api/jira/issue/${expandedKey}`)); if (d.ok) setDetail(d); loadCards(); }
     else flash(r.message || "등록 실패");
   };
   const runCardNow = async (key, phase) => { const r = await api.post(`/api/cards/${key}/run`, { phase, project: PID }); flash(r.ok ? `${key} ${phase} 즉시 실행 — Claude 실행 로그 확인` : (r.message || "실패")); if (r.ok) showClaudeLog(key, phase); };
@@ -810,7 +810,7 @@ function ProjectCard({ proj, onDeleted, flash }) {
                                 <textarea value={reply} onChange={(e) => setReply(e.target.value)} spellCheck={false} placeholder="질문에 대한 답변/추가 설계를 적으세요."
                                   className="w-full h-24 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
                                 <div className="flex items-center justify-between mt-2">
-                                  <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer"><input type="checkbox" checked={replyAnswered} onChange={(e) => setReplyAnswered(e.target.checked)} /><span>답변 완료로 표시 ({config.answeredLabel || "claude-answered"} → build 진행)</span></label>
+                                  <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer"><input type="checkbox" checked={replyAnswered} onChange={(e) => setReplyAnswered(e.target.checked)} /><span>답변 완료로 표시 ({config.answeredLabel || "claude-answered"} 라벨 → 개발 대기, '개발 대기' 매핑 상태로 전환)</span></label>
                                   <Btn color="green" onClick={postReply} disabled={posting}>{posting ? "등록 중…" : "답변 등록"}</Btn>
                                 </div>
                                 </React.Fragment>
