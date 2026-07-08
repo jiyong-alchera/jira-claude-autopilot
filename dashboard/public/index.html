@@ -965,6 +965,21 @@ function App() {
     const r = await api.get(`/api/jira/issue/${key}?project=${encodeURIComponent(project || "")}`);
     setHistDetail((p) => (p && p.key === key) ? { key, loading: false, detail: r.ok ? r : { error: r.message || "조회 실패" } } : p);
   };
+  const jiraUrlFor = (project, key) => {   // 처리 이력 키 → Jira 티켓 페이지 URL(프로젝트 jiraSite 사용)
+    const p = (projects || []).find((x) => x.id === project);
+    const site = p && p.jiraSite;
+    return (site && key) ? `https://${site}/browse/${key}` : "";
+  };
+  const copyText = async (text) => {   // 클립보드 복사(비보안 컨텍스트 폴백 포함)
+    try { await navigator.clipboard.writeText(text); return true; } catch {}
+    try { const t = document.createElement("textarea"); t.value = text; t.style.position = "fixed"; t.style.opacity = "0"; document.body.appendChild(t); t.select(); const ok = document.execCommand("copy"); document.body.removeChild(t); return ok; } catch { return false; }
+  };
+  const copyJiraLink = async (e, project, key) => {
+    e.stopPropagation();
+    const url = jiraUrlFor(project, key);
+    if (!url) { flash(`Jira 사이트 설정이 없어 링크를 만들 수 없습니다 (${project || "?"})`); return; }
+    flash(await copyText(url) ? `링크 복사됨: ${key}` : "복사 실패 — 클립보드 권한을 확인하세요");
+  };
   useEffect(() => { loadProjects(); loadHistory(); api.get("/api/loops/status").then(setStatus); }, []);
   useEffect(() => {
     const t = setInterval(async () => {
@@ -1057,7 +1072,7 @@ function App() {
                         <tr className="border-b border-slate-800 hover:bg-slate-800/40 cursor-pointer" onClick={() => toggleHist(rowId, h.key, h.project)}>
                           <td className="py-2 text-slate-400 whitespace-nowrap truncate">{h.ts ? new Date(h.ts).toLocaleString() : "-"}</td>
                           <td className="text-slate-400 truncate" title={h.project || ""}>{h.project || "-"}</td>
-                          <td className="text-slate-200 whitespace-nowrap truncate"><span className="inline-block w-3 text-slate-500">{open ? "▾" : "▸"}</span>{h.key}</td>
+                          <td className="text-slate-200 whitespace-nowrap truncate"><span className="inline-block w-3 text-slate-500">{open ? "▾" : "▸"}</span><button type="button" onClick={(e) => copyJiraLink(e, h.project, h.key)} title="클릭하면 Jira 티켓 링크 복사" className="hover:text-indigo-300 hover:underline">{h.key}</button></td>
                           <td className="text-slate-300 truncate" title={h.summary || ""}>{h.summary || "-"}</td>
                           <td className="text-slate-300 truncate">{h.phase}</td>
                           <td><span className={`inline-block whitespace-nowrap text-xs px-2 py-1 rounded-full border ${cls}`}>{label}</span></td>
