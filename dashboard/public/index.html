@@ -390,7 +390,7 @@ function ProjectCard({ proj, onDeleted, flash }) {
     if (expandedKey === key) { setExpandedKey(""); setDetail(null); setCardHistory(null); return; }
     setExpandedKey(key); setDetail(null); setCardHistory(null); setReply(""); setReplyAnswered(true); setReplyTarget(null); setClaudeLog(null); setDetailLoading(true);
     const r = await api.get(withP(`/api/jira/issue/${key}`)); setDetailLoading(false); setDetail(r.ok ? r : { error: r.message || "조회 실패" });
-    try { const h = await api.get(withP(`/api/history?limit=1000`)); setCardHistory({ key, entries: h.ok ? (h.entries || []).filter((e) => e.key === key) : [] }); } catch { setCardHistory({ key, entries: [] }); }
+    try { const h = await api.get(withP(`/api/history`)); setCardHistory({ key, entries: h.ok ? (h.entries || []).filter((e) => e.key === key) : [] }); } catch { setCardHistory({ key, entries: [] }); }
   };
   const changeStatus = async (key, transitionId, toName) => {
     if (!transitionId) return;
@@ -958,7 +958,7 @@ function App() {
   const flash = (m) => { setToast(m); setTimeout(() => setToast(""), 2500); };
 
   const loadProjects = async () => { const r = await api.get("/api/projects"); setProjects(r.projects || []); };
-  const loadHistory = async () => { const r = await api.get("/api/history?limit=100"); if (r.ok) setHistory(r.entries || []); };
+  const loadHistory = async () => { const r = await api.get("/api/history"); if (r.ok) setHistory(r.entries || []); };
   const toggleHist = async (rowId, key, project) => {
     if (histExpanded === rowId) { setHistExpanded(""); setHistDetail(null); return; }
     setHistExpanded(rowId); setHistDetail({ key, loading: true, detail: null });
