@@ -552,19 +552,36 @@ async function listCardPRs(repos, key, cred) {
   }
   return out;
 }
-// 완료 내역을 카드 설명 ADF 맨 아래에 안전 append(기존 노드·이미지 보존, 기존 '완료 내역' 섹션은 교체).
-// append-summary.js 와 동일한 방식 — 머지 시점에 최종 내용으로 갱신하기 위해 서버에서 직접 수행.
-async function appendCompletionSummary(cfg, cred, key, markdown) {
-  const HEADING = "완료 내역";
+// 시스템이 관리하는 설명 섹션 heading — 재실행 시 해당 섹션만 제자리 교체하기 위한 경계 인식용.
+const MANAGED_SECTIONS = new Set(["완료 내역", "🤖 Claude 고도화 설명"]);
+const isManagedHeading = (n) => n && n.type === "heading" && MANAGED_SECTIONS.has(adfToText(n).trim());
+// markdown 섹션을 카드 설명 ADF 에 안전하게 반영(기존 노드·이미지 보존).
+// append-summary.js 와 동일하게 markdown↔ADF 왕복 없이 붙여넣은 이미지 media 노드를 보존한다.
+// 같은 heading 의 기존 섹션이 있으면 다음 관리 섹션(또는 끝)까지만 제자리 교체 → 뒤따르는 다른 관리 섹션(예: 완료 내역)은 보존.
+async function appendMarkdownSection(cfg, cred, key, heading, markdown) {
   const issue = await jiraReq("GET", `/rest/api/3/issue/${encodeURIComponent(key)}?fields=description`, null, cfg, cred);
   const adf = (issue.fields && issue.fields.description) || { type: "doc", version: 1, content: [] };
   if (!Array.isArray(adf.content)) adf.content = [];
-  const idx = adf.content.findIndex((n) => n && n.type === "heading" && adfToText(n).trim() === HEADING);
-  if (idx !== -1) { let cut = idx; if (cut > 0 && adf.content[cut - 1] && adf.content[cut - 1].type === "rule") cut -= 1; adf.content = adf.content.slice(0, cut); }
-  adf.content.push({ type: "rule" });
-  adf.content.push({ type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: HEADING }] });
-  adf.content.push(...mdToADF(markdown).content);
+  const section = [
+    { type: "rule" },
+    { type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: heading }] },
+    ...mdToADF(markdown).content,
+  ];
+  const idx = adf.content.findIndex((n) => n && n.type === "heading" && adfToText(n).trim() === heading);
+  if (idx === -1) { adf.content.push(...section); }
+  else {
+    let start = idx; if (start > 0 && adf.content[start - 1] && adf.content[start - 1].type === "rule") start -= 1;
+    let end = adf.content.length;   // 다음 관리 섹션 heading 직전까지가 이 섹션의 범위(본문 내 ## 소제목은 관리 heading 이 아님)
+    for (let j = idx + 1; j < adf.content.length; j++) {
+      if (isManagedHeading(adf.content[j])) { end = (adf.content[j - 1] && adf.content[j - 1].type === "rule") ? j - 1 : j; break; }
+    }
+    adf.content.splice(start, end - start, ...section);
+  }
   await jiraReq("PUT", `/rest/api/3/issue/${encodeURIComponent(key)}`, { fields: { description: adf } }, cfg, cred);
+}
+// 완료 내역 append(머지 시점 최종 내용으로 갱신) — 서버에서 직접 수행.
+async function appendCompletionSummary(cfg, cred, key, markdown) {
+  return appendMarkdownSection(cfg, cred, key, "완료 내역", markdown);
 }
 // 머지된 PR 들의 최종 본문으로 완료 내역 markdown 구성(PR 본문은 rework 시 갱신되므로 최종 반영 내용).
 async function buildMergeSummaryMd(mergedPRs, cred) {
@@ -820,6 +837,45 @@ ${text}`;
     const refined = await runClaude(prompt, cred);
     if (!refined) throw new Error("변환 결과가 비어 있습니다.");
     res.json({ ok: true, description: refined });
+  } catch (e) { fail(res, e); }
+});
+
+// 기존 카드(툴 생성 여부 무관) 본문 → Claude 고도화. 미리보기만 생성하고 Jira 에는 반영하지 않음.
+const ENHANCE_HEADING = "🤖 Claude 고도화 설명";
+app.post("/api/jira/issue/:key/enhance", async (req, res) => {
+  try {
+    const { cfg, cred } = resolveProject(req);
+    const key = req.params.key;
+    const issue = await jiraReq("GET", `/rest/api/3/issue/${encodeURIComponent(key)}?fields=summary,description`, null, cfg, cred);
+    const summary = (issue.fields && issue.fields.summary) || "";
+    let current = adfToText(issue.fields && issue.fields.description).trim();
+    const hi = current.indexOf(ENHANCE_HEADING);   // 이전 고도화 섹션은 입력에서 제외(중복 고도화 방지)
+    if (hi !== -1) current = current.slice(0, hi).trim();
+    const prompt = `다음은 기존 Jira 카드의 본문입니다. 개발 담당자가 착수하기 좋도록 체계적인 한국어 설명으로 고도화(보강)하세요.
+
+규칙:
+- 입력에 없는 사실/요구사항을 지어내지 마세요. 모호한 부분은 "(확인 필요)" 로 표시하세요.
+- 다음 구조를 사용하세요: "## 배경/목적", "## 요구사항"(번호 목록), "## 완료 조건"(- [ ] 체크리스트).
+- 결과 본문(마크다운)만 출력하세요. 머리말·맺음말·설명 등 본문 외 텍스트는 절대 출력하지 마세요.
+
+[제목] ${summary || "(없음)"}
+[기존 본문]
+${current || "(본문 없음)"}`;
+    const enhanced = await runClaude(prompt, cred);
+    if (!enhanced) throw new Error("고도화 결과가 비어 있습니다.");
+    res.json({ ok: true, description: enhanced, heading: ENHANCE_HEADING });
+  } catch (e) { fail(res, e); }
+});
+
+// 고도화 결과를 카드 설명 하단에 '🤖 Claude 고도화 설명' 섹션으로 반영(원문·이미지 보존, 재실행 시 같은 섹션 교체).
+app.post("/api/jira/issue/:key/enhance/apply", async (req, res) => {
+  try {
+    const { cfg, cred } = resolveProject(req);
+    const key = req.params.key;
+    const markdown = String((req.body && req.body.description) || "").trim();
+    if (!markdown) throw new Error("반영할 고도화 본문이 없습니다.");
+    await appendMarkdownSection(cfg, cred, key, ENHANCE_HEADING, markdown);
+    res.json({ ok: true });
   } catch (e) { fail(res, e); }
 });
 
