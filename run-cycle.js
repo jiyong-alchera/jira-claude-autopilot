@@ -39,35 +39,71 @@ function resolveCardEnv(cfg, key) {
   return fs.existsSync(p) ? p : null;
 }
 
-// 카드 첨부 이미지를 로컬로 내려받아 경로 목록 반환 → Claude 가 Read 도구로 인식하게 함(추론에 이미지 반영).
+// 카드 첨부를 로컬로 내려받아 Claude 가 Read 도구로 인식하게 함(추론에 반영).
+// 이미지(image/*)와 Claude 가 읽을 수 있는 문서(PDF·텍스트·코드 등)를 분류해 각각 경로 목록으로 반환한다.
+// 읽을 수 없는 바이너리(오피스 문서·압축 등)는 다운로드하지 않고 로그로만 남긴다(Read 로 의미 있게 열 수 없으므로).
 const MAX_CARD_IMAGES = 10;
-async function downloadCardImages(cfg, cred, key) {
-  if (!cred || !cred.atlassianEmail || !cred.atlassianToken || !cfg.jiraSite) return [];
+const MAX_CARD_DOCS = 10;
+const MAX_DOC_BYTES = 25 * 1024 * 1024;   // 문서 1개 용량 상한(대용량 다운로드 방지)
+const DOC_MIME = new Set([
+  "application/pdf", "application/json", "application/xml", "application/xhtml+xml",
+  "application/javascript", "application/x-javascript", "application/typescript",
+  "application/x-yaml", "application/yaml", "application/x-sh", "application/x-python",
+  "application/x-httpd-php", "application/sql", "application/x-sql", "text/markdown",
+]);
+const DOC_EXT = new Set([
+  "pdf", "txt", "md", "markdown", "csv", "tsv", "json", "yaml", "yml", "xml", "html", "htm",
+  "js", "jsx", "ts", "tsx", "py", "go", "java", "kt", "rb", "php", "c", "h", "cpp", "cc", "hpp",
+  "cs", "rs", "swift", "sh", "bash", "zsh", "sql", "toml", "ini", "cfg", "conf", "env", "log",
+  "gradle", "properties", "dockerfile", "makefile", "vue", "svelte", "scss", "css", "less",
+]);
+// Claude Read 로 의미 있게 열 수 있는 비이미지 문서인지 판정(mimeType 우선, 없으면 확장자 폴백)
+function isReadableDoc(a) {
+  const mt = String(a.mimeType || "").toLowerCase();
+  if (mt.startsWith("image/")) return false;
+  if (mt.startsWith("text/")) return true;
+  if (DOC_MIME.has(mt)) return true;
+  const ext = (String(a.filename || "").split(".").pop() || "").toLowerCase();
+  return DOC_EXT.has(ext);
+}
+async function fetchAttachmentTo(cfg, auth, a, dir) {
+  let up = await fetch(`https://${cfg.jiraSite}/rest/api/3/attachment/content/${a.id}`, { headers: { Authorization: `Basic ${auth}` }, redirect: "manual", signal: AbortSignal.timeout(30000) });
+  const loc = up.headers.get("location");
+  if (up.status >= 300 && up.status < 400 && loc) up = await fetch(loc, { signal: AbortSignal.timeout(30000) });
+  if (!up.ok) return null;
+  const safe = String(a.filename || `att-${a.id}`).replace(/[^\w.\-]/g, "_");
+  const p = path.join(dir, `${a.id}-${safe}`);
+  fs.writeFileSync(p, Buffer.from(await up.arrayBuffer()));
+  return p;
+}
+async function downloadCardAttachments(cfg, cred, key) {
+  const empty = { images: [], docs: [] };
+  if (!cred || !cred.atlassianEmail || !cred.atlassianToken || !cfg.jiraSite) return empty;
   const auth = Buffer.from(`${cred.atlassianEmail}:${cred.atlassianToken}`).toString("base64");
   try {
     const r = await fetch(`https://${cfg.jiraSite}/rest/api/3/issue/${encodeURIComponent(key)}?fields=attachment`, { headers: { Authorization: `Basic ${auth}`, Accept: "application/json" }, signal: AbortSignal.timeout(15000) });
-    if (!r.ok) return [];
+    if (!r.ok) return empty;
     const d = await r.json();
-    let imgs = ((d.fields && d.fields.attachment) || []).filter((a) => String(a.mimeType || "").startsWith("image/"));
+    const all = (d.fields && d.fields.attachment) || [];
+    let imgs = all.filter((a) => String(a.mimeType || "").startsWith("image/"));
+    let docs = all.filter(isReadableDoc);
+    const skipped = all.filter((a) => !String(a.mimeType || "").startsWith("image/") && !isReadableDoc(a));
+    if (skipped.length) log(`[${key}] 첨부 ${skipped.length}개는 Claude 가 읽을 수 없어 제외: ${skipped.map((a) => a.filename).join(", ")}`);
     if (imgs.length > MAX_CARD_IMAGES) { log(`[${key}] 이미지 ${imgs.length}장 중 ${MAX_CARD_IMAGES}장만 인식(상한)`); imgs = imgs.slice(0, MAX_CARD_IMAGES); }
+    const tooBig = docs.filter((a) => Number(a.size || 0) > MAX_DOC_BYTES);
+    if (tooBig.length) log(`[${key}] 문서 ${tooBig.length}개는 용량 초과(>${Math.round(MAX_DOC_BYTES / 1048576)}MB)로 제외: ${tooBig.map((a) => a.filename).join(", ")}`);
+    docs = docs.filter((a) => Number(a.size || 0) <= MAX_DOC_BYTES);
+    if (docs.length > MAX_CARD_DOCS) { log(`[${key}] 문서 ${docs.length}개 중 ${MAX_CARD_DOCS}개만 인식(상한)`); docs = docs.slice(0, MAX_CARD_DOCS); }
     const base = cfg.cloneBase || path.join(cfg.workDir || SELF, "repos");
-    const dir = path.join(base, ".state", `${key}.images`);
-    fs.mkdirSync(dir, { recursive: true });
-    const paths = [];
-    for (const a of imgs) {
-      try {
-        let up = await fetch(`https://${cfg.jiraSite}/rest/api/3/attachment/content/${a.id}`, { headers: { Authorization: `Basic ${auth}` }, redirect: "manual", signal: AbortSignal.timeout(30000) });
-        const loc = up.headers.get("location");
-        if (up.status >= 300 && up.status < 400 && loc) up = await fetch(loc, { signal: AbortSignal.timeout(30000) });
-        if (!up.ok) continue;
-        const safe = String(a.filename || `att-${a.id}`).replace(/[^\w.\-]/g, "_");
-        const p = path.join(dir, `${a.id}-${safe}`);
-        fs.writeFileSync(p, Buffer.from(await up.arrayBuffer()));
-        paths.push(p);
-      } catch { /* 개별 실패는 건너뜀 */ }
-    }
-    return paths;
-  } catch { return []; }
+    const imgDir = path.join(base, ".state", `${key}.images`);
+    const docDir = path.join(base, ".state", `${key}.docs`);
+    if (imgs.length) fs.mkdirSync(imgDir, { recursive: true });
+    if (docs.length) fs.mkdirSync(docDir, { recursive: true });
+    const outImg = [], outDoc = [];
+    for (const a of imgs) { try { const p = await fetchAttachmentTo(cfg, auth, a, imgDir); if (p) outImg.push(p); } catch { /* 개별 실패 건너뜀 */ } }
+    for (const a of docs) { try { const p = await fetchAttachmentTo(cfg, auth, a, docDir); if (p) outDoc.push(p); } catch { /* 개별 실패 건너뜀 */ } }
+    return { images: outImg, docs: outDoc };
+  } catch { return empty; }
 }
 
 // 카드 라벨 조회(프로젝트 자격증명) → 대상 repo 결정용
@@ -148,7 +184,13 @@ async function runCard(key, env, cfg, cred) {
     const cardEnv = resolveCardEnv(cfg, key);   // 카드 전용 env(로컬) 우선
     e.CARD_REPOS = reposToLines(cfg, lib.cardRepos(cfg, await fetchLabels(cfg, cred, key)), cardEnv);
   } catch { /* 기본(전체) 사용 */ }
-  // review: PR 리뷰만 수행(run-review.sh). 이미지/요약 세팅 불필요.
+  // 카드 첨부(이미지+문서)를 내려받아 Claude Read 인식용 env 로 전달 — plan/build/review 모두 동일하게 적용.
+  try {
+    const att = await downloadCardAttachments(cfg, cred, key);
+    if (att.images.length) { e.CARD_IMAGES = att.images.join("\n"); log(`[${key}] 카드 이미지 ${att.images.length}장 첨부(추론 인식)`); }
+    if (att.docs.length) { e.CARD_DOCS = att.docs.join("\n"); log(`[${key}] 카드 문서 ${att.docs.length}개 첨부(추론 인식)`); }
+  } catch { /* 첨부 없이 진행 */ }
+  // review: PR 리뷰만 수행(run-review.sh). 요약 세팅 불필요.
   if (phase === "review") {
     return new Promise((resolve) => {
       const c = spawn("bash", [path.join(SELF, "run-review.sh"), key], { env: e, stdio: "inherit" });
@@ -156,10 +198,6 @@ async function runCard(key, env, cfg, cred) {
       c.on("error", () => resolve());
     });
   }
-  try {
-    const imgs = await downloadCardImages(cfg, cred, key);   // 카드 이미지 → Claude Read 인식용
-    if (imgs.length) { e.CARD_IMAGES = imgs.join("\n"); log(`[${key}] 카드 이미지 ${imgs.length}장 첨부(추론 인식)`); }
-  } catch { /* 이미지 없이 진행 */ }
   // 완료 내역 요약 저장 경로(claude 가 여기에 markdown 작성 → 스크립트가 설명 ADF 에 안전 append)
   const stateBase = cfg.cloneBase || path.join(cfg.workDir || SELF, "repos");
   e.SUMMARY_FILE = path.join(stateBase, ".state", `${key}.summary.md`);

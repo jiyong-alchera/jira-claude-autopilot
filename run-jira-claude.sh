@@ -210,7 +210,7 @@ cd "${CLONE_BASE}"
 echo ">> [${ISSUE_KEY}] 작업 베이스: $(pwd)"
 
 # ===== 5) claude 실행 (+ 실패 재시도/백오프) =====
-# 카드 첨부 이미지(run-cycle 가 내려받아 CARD_IMAGES 로 전달)를 프롬프트에 주입 → Read 도구로 시각 인식.
+# 카드 첨부(run-cycle 가 내려받아 CARD_IMAGES/CARD_DOCS 로 전달)를 프롬프트에 주입 → Read 도구로 인식.
 IMAGE_INSTR=""
 if [[ -n "${CARD_IMAGES:-}" ]]; then
   _imgs=""
@@ -219,6 +219,15 @@ if [[ -n "${CARD_IMAGES:-}" ]]; then
 
 [이슈 첨부 이미지] 아래 파일들은 이 Jira 이슈(${ISSUE_KEY})의 설명/코멘트에 포함된 이미지입니다. 작업을 시작하기 전에 반드시 'Read' 도구로 각 파일을 열어 시각적으로 내용을 파악하고(스크린샷·다이어그램·UI 시안·오류 화면 등), 요구사항 이해와 구현에 반영하세요:
 ${_imgs}"
+fi
+DOC_INSTR=""
+if [[ -n "${CARD_DOCS:-}" ]]; then
+  _docs=""
+  while IFS= read -r _p; do [[ -n "${_p}" ]] && _docs+="  - ${_p}"$'\n'; done <<< "${CARD_DOCS}"
+  DOC_INSTR="
+
+[이슈 첨부 문서] 아래 파일들은 이 Jira 이슈(${ISSUE_KEY})에 첨부된 문서(PDF·텍스트·스펙·코드 등)입니다. 작업을 시작하기 전에 반드시 'Read' 도구로 각 파일을 열어 내용을 파악하고, 요구사항 이해와 구현에 반영하세요:
+${_docs}"
 fi
 
 if [[ "${PHASE}" == "plan" ]]; then
@@ -314,8 +323,8 @@ PR 을 하나도 생성하지 못했다면 절대 완료로 간주하지 말고,
 완료 후 결과(repo별 테스트/빌드 결과 · 브랜치 · PR URL) 요약을 출력하세요."
 fi
 
-# 첨부 이미지 인식 지시를 모든 단계(plan/build/rework) 프롬프트에 공통 추가
-PROMPT="${PROMPT}${IMAGE_INSTR}"
+# 첨부(이미지·문서) 인식 지시를 모든 단계(plan/build/rework) 프롬프트에 공통 추가
+PROMPT="${PROMPT}${IMAGE_INSTR}${DOC_INSTR}"
 
 # ===== 실행 + 실패 재시도/백오프 처리 =====
 # claude 가 0이 아닌 코드로 종료하면 실패로 보고 카드별 실패 카운터를 증가시킨다.
