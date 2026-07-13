@@ -980,6 +980,8 @@ app.get("/api/jira/issue/:key", async (req, res) => {
       labels: (issue.fields && issue.fields.labels) || [],
       description: adfToText(issue.fields && issue.fields.description),
       descriptionSegments: adfSegments(issue.fields && issue.fields.description, imgByName, images),
+      // 인라인 임베드 여부와 무관하게 이슈의 '모든' 첨부(이미지·문서)를 목록으로 제공(프록시로 열람/다운로드)
+      attachments: ((issue.fields && issue.fields.attachment) || []).map((a) => ({ id: a.id, filename: a.filename, mimeType: a.mimeType, size: a.size })),
       comments, transitions, url: `https://${cfg.jiraSite}/browse/${key}`,
     });
   } catch (e) { fail(res, e); }

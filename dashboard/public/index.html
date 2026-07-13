@@ -234,6 +234,33 @@ function RichBody({ segments, fallback, cardKey, pid }) {
   );
 }
 
+// 이슈 첨부파일 목록 — 인라인 임베드 여부와 무관하게 모든 첨부를 표시(이미지=썸네일, 그 외=다운로드 링크).
+// 백엔드 프록시(/api/.../attachment/:id)로 Basic auth 를 대신 처리하므로 브라우저가 직접 열람 가능.
+function AttachmentList({ attachments, cardKey, pid }) {
+  if (!attachments || !attachments.length) return null;
+  const src = (id) => `/api/jira/issue/${cardKey}/attachment/${id}?project=${encodeURIComponent(pid || "")}`;
+  const isImg = (a) => String(a.mimeType || "").startsWith("image/");
+  const fmt = (n) => n >= 1048576 ? (n / 1048576).toFixed(1) + "MB" : n >= 1024 ? Math.round(n / 1024) + "KB" : (n || 0) + "B";
+  return (
+    <div>
+      <div className="text-xs text-slate-400 mb-1">첨부파일 ({attachments.length})</div>
+      <div className="flex flex-wrap gap-2 mb-4">
+        {attachments.map((a) => isImg(a) ? (
+          <a key={a.id} href={src(a.id)} target="_blank" rel="noreferrer" title={`${a.filename} · ${fmt(a.size)}`}
+            className="block border border-slate-700 rounded overflow-hidden hover:border-indigo-500/50">
+            <img src={src(a.id)} alt={a.filename} loading="lazy" className="h-24 w-auto max-w-[220px] object-cover bg-black/30 block" />
+          </a>
+        ) : (
+          <a key={a.id} href={src(a.id)} target="_blank" rel="noreferrer" title={a.filename}
+            className="flex items-center gap-2 px-3 py-2 border border-slate-700 rounded text-xs text-slate-200 hover:border-indigo-500/50 hover:text-indigo-300 bg-slate-800/40">
+            <span>📎</span><span className="font-mono truncate max-w-[220px]">{a.filename}</span><span className="text-slate-500 whitespace-nowrap">{fmt(a.size)}</span>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // 실행에 필요한 설치 요소·리소스 안내 모달
 function InfoModal({ onClose }) {
   const H = ({ children }) => <h3 className="text-sm font-semibold text-indigo-300 mt-4 mb-1">{children}</h3>;
@@ -847,6 +874,7 @@ function ProjectCard({ proj, onDeleted, flash }) {
                                     </div>
                                   </div>
                                 )}
+                                <AttachmentList attachments={detail.attachments} cardKey={detail.key} pid={PID} />
                                 <div className="text-xs text-slate-400 mb-1">코멘트 ({detail.comments.length})</div>
                                 <div className="space-y-2 mb-4 max-h-72 overflow-auto">
                                   {detail.comments.length === 0 ? <p className="text-slate-500 text-xs">코멘트 없음</p> : detail.comments.map((cm, i) => (
@@ -1144,6 +1172,7 @@ function App() {
                               : histDetail.detail ? (
                                 <div>
                                   <div className="bg-black/40 border border-slate-700 rounded p-3 text-xs text-slate-200 mb-2 max-h-72 overflow-auto"><RichBody segments={histDetail.detail.descriptionSegments} fallback={histDetail.detail.description || "(설명 없음)"} cardKey={h.key} pid={h.project} /></div>
+                                  <AttachmentList attachments={histDetail.detail.attachments} cardKey={h.key} pid={h.project} />
                                   <div className="text-[11px] text-slate-400 mb-1">코멘트 ({(histDetail.detail.comments || []).length})</div>
                                   <div className="space-y-2 max-h-60 overflow-auto">
                                     {(histDetail.detail.comments || []).length === 0 ? <p className="text-slate-500 text-[11px]">코멘트 없음</p> : histDetail.detail.comments.map((cm, k) => (
