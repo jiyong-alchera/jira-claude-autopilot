@@ -12,8 +12,12 @@
 #
 # 매 주기 미승인 PR 은 최신 코멘트를 다시 읽어 재리뷰하고, 한 번 승인 마커가 남으면 이후 스킵한다.
 #
+# 자동 주기에서 미승인 리뷰가 이미 쌓여 있으면(사용자가 반영 안 함) 리뷰를 또 달지 않고,
+# 먼저 '리뷰 반영(rework)'으로 PR 을 전진시킨 뒤 이어서 리뷰한다(리뷰 스택 무한 누적 방지).
+# MAX_AUTO_REWORK 회를 넘겨도 미승인이면 자동 반영/리뷰를 멈추고 사람 확인을 요청한다.
+#
 # env: PROJECT_ID, CARD_REPOS(name\x1furl\x1f...), GH_TOKEN, JIRA_SITE, ASSIGNEE_NAME,
-#      CLONE_BASE, HISTORY_FILE, PROJECT_KEY (+ Atlassian MCP 인증은 claude 쪽)
+#      CLONE_BASE, HISTORY_FILE, PROJECT_KEY, MAX_AUTO_REWORK(기본 3) (+ Atlassian MCP 인증은 claude 쪽)
 # --------------------------------------------------------------------------
 set -euo pipefail
 
@@ -24,6 +28,7 @@ ASSIGNEE_NAME="${ASSIGNEE_NAME:-담당자}"
 HISTORY_FILE="${HISTORY_FILE:-${WORK_DIR}/history.jsonl}"
 CARD_REPOS="${CARD_REPOS:-}"
 APPROVED_MARKER="CLAUDE-REVIEW-APPROVED"   # lib.js REVIEW_APPROVED_MARKER 와 동일해야 함
+MAX_AUTO_REWORK="${MAX_AUTO_REWORK:-3}"     # 자동 리뷰 반영(rework) 최대 반복 — 초과 시 자동 반영/리뷰 중단(사람 확인)
 
 ISSUE_KEY="${1:-}"
 if [[ -z "${ISSUE_KEY}" ]]; then echo "Usage: $0 <JIRA-ISSUE-KEY>" >&2; exit 1; fi
@@ -111,6 +116,30 @@ for OR in "${R_OWNER[@]}"; do
     if [[ "${FORCE_REVIEW:-}" != "1" ]] && printf '%s' "${BODIES}" | grep -q "${APPROVED_MARKER}"; then
       echo ">> [${ISSUE_KEY}] ${OR}#${N} 이미 승인됨(마커 존재) → 스킵"
       continue
+    fi
+
+    # 자동 주기에서 이미 미승인 리뷰(봇이 남긴 지적 코멘트)가 쌓여 있으면, 리뷰를 또 달지 말고
+    # 먼저 '리뷰 반영(rework)'으로 PR 을 전진시킨 뒤 아래에서 이어서 리뷰한다(승인되면 다음 주기부터 스킵).
+    # 지적 코멘트에는 고유 마커가 없으므로 '봇(author=BOT_LOGIN)이 남긴 승인 마커 아닌 코멘트 수'로 판별.
+    # 수동 단건 리뷰(REVIEW_ONLY_*)와 rework 후 재리뷰 연쇄(FORCE_REVIEW=1)에는 적용하지 않는다(재귀 방지).
+    if [[ "${FORCE_REVIEW:-}" != "1" && -z "${REVIEW_ONLY_OWNER}" ]]; then
+      CMTS_JSON="$(gh api "repos/${OR}/issues/${N}/comments?per_page=100" 2>/dev/null || echo '[]')"
+      BOT_REVIEW_CNT="$(printf '%s' "${CMTS_JSON}" | BOT="${BOT_LOGIN}" MARK="${APPROVED_MARKER}" node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{try{const a=JSON.parse(d),bot=process.env.BOT||"",m=process.env.MARK||"";console.log(a.filter(c=>c.user&&c.user.login===bot).filter(c=>!String(c.body||"").includes(m)).length)}catch{console.log(0)}})' 2>/dev/null || echo 0)"
+      if [[ "${BOT_REVIEW_CNT:-0}" -ge 1 ]]; then
+        if [[ "${BOT_REVIEW_CNT}" -ge "${MAX_AUTO_REWORK}" ]]; then
+          echo ">> [${ISSUE_KEY}] ${OR}#${N} 자동 리뷰 반영 ${BOT_REVIEW_CNT}회에도 미승인 → 자동 반영/리뷰 중단(사람 확인 필요)"
+          notify_slack "⏸ [${ISSUE_KEY}] 자동 리뷰 반영 ${BOT_REVIEW_CNT}회 후에도 미승인 · ${OR}#${N} · ${PR_URL} — 사람 확인 필요"
+          reviewed_any=1
+          continue
+        fi
+        echo ">> [${ISSUE_KEY}] ${OR}#${N} 미승인 리뷰 ${BOT_REVIEW_CNT}건 존재 → 리뷰 반영(rework) 먼저 실행 후 재리뷰"
+        reviewed_any=1
+        # run-review.sh 는 repo 를 clone 하지 않으므로 실제 코드 반영은 run-jira-claude.sh(build+REWORK)에 위임한다.
+        # REVIEW_AFTER 는 주지 않는다 — 이 스크립트가 아래 리뷰 블록으로 갱신된 PR 을 이어서 리뷰하므로(review 락 재획득·재귀 방지).
+        REWORK=1 REWORK_ONLY_OWNER="${OR}" REWORK_ONLY_NUM="${N}" \
+          bash "${SELF_DIR}/run-jira-claude.sh" "${ISSUE_KEY}" build \
+          || echo ">> [${ISSUE_KEY}] ${OR}#${N} 리뷰 반영(rework) 실패/스킵 — 이어서 리뷰만 진행" >&2
+      fi
     fi
 
     echo ">> [${ISSUE_KEY}] ${OR}#${N} 리뷰 시작"
