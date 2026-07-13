@@ -119,7 +119,7 @@ async function fetchLabels(cfg, cred, key) {
 const DEFAULTS = {
   workDir: SELF, baseBranch: "main", triggerMode: "label", triggerLabel: "claude-work", triggerText: "claude-work",
   doneStatus: "DEV COMPLETED", plannedLabel: "claude-planned", answeredLabel: "claude-answered", failedLabel: "claude-failed", prOpenLabel: "claude-pr",
-  maxRetries: 3, maxParallel: 3, intervalSeconds: 3600, reviewIntervalSeconds: 3600, envMode: "content", envPath: "", envDest: "", cardEnvDir: "", cloneBase: path.join(SELF, "repos"),
+  maxRetries: 3, maxParallel: 5, intervalSeconds: 3600, reviewIntervalSeconds: 3600, envMode: "content", envPath: "", envDest: "", cardEnvDir: "", cloneBase: path.join(SELF, "repos"),
   testCmd: "", buildCmd: "", repoUrl: "", jiraSite: "", projectKey: "", assigneeEmail: "", assigneeName: "",
 };
 
@@ -228,7 +228,7 @@ async function runWithCap(keys, env, cap, cfg, cred) {
       const keys = await detect(p, env);
       if (!keys.length) { log(`[${p.id}] ${phase} 대상 없음`); continue; }
       log(`[${p.id}] ${phase} 대상 ${keys.length}건: ${keys.join(", ")} (동시 ${cfg.maxParallel})`);
-      await runWithCap(keys, env, cfg.maxParallel || 3, cfg, cred);
+      await runWithCap(keys, env, cfg.maxParallel || 5, cfg, cred);
       log(`[${p.id}] ${phase} 사이클 완료`);
     } catch (e) {
       log(`[${p.id}] ${phase} 오류: ${String((e && e.message) || e)}`);

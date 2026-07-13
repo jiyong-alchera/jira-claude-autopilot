@@ -532,7 +532,7 @@ function ProjectCard({ proj, onDeleted, flash }) {
           info={"plan/build 루프의 실행 주기(초)입니다. 기본 3600(1시간).\n\n루프는 이 주기마다 등록된 모든 프로젝트를 순회하며 대상 카드를 탐지·처리합니다."} />
         <Field label="review 주기(초)" type="number" value={config.reviewIntervalSeconds} onChange={(v) => setConfig({ ...config, reviewIntervalSeconds: parseInt(v || "3600", 10) })} placeholder="3600"
           info={"review 루프(PR 자동 리뷰)의 실행 주기(초)입니다. 기본 3600.\n\nreview 루프는 자동화가 올린 build PR을 이 주기마다 점검해, 문제없으면 승인 마커 코멘트를 남깁니다."} />
-        <Field label="동시 처리 상한 (병렬)" type="number" value={config.maxParallel} onChange={(v) => setConfig({ ...config, maxParallel: parseInt(v || "3", 10) })} placeholder="3"
+        <Field label="동시 처리 상한 (병렬)" type="number" value={config.maxParallel} onChange={(v) => setConfig({ ...config, maxParallel: parseInt(v || "5", 10) })} placeholder="5"
           info={"한 사이클에서 동시에 처리할 카드 수의 상한입니다. 기본 3.\n\n너무 크게 잡으면 API/자원 부담이 커지고, 작게 잡으면 처리 대기가 늘어납니다."} />
         <Field label="clone 베이스 폴더" value={config.cloneBase} onChange={(v) => setConfig({ ...config, cloneBase: v })} placeholder="/path/to/repos"
           info={"카드별 repo clone과 실행 상태(.state)가 저장되는 폴더의 절대 경로입니다.\n\n각 repo는 이 아래에 '<repo이름>-<카드키>' 디렉토리로 clone됩니다. 병합 완료 시 해당 clone은 자동 삭제됩니다."} />

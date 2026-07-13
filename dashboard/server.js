@@ -46,7 +46,7 @@ const DEFAULT_CONFIG = {
   failedLabel: "claude-failed",
   prOpenLabel: "claude-pr",
   maxRetries: 3,
-  maxParallel: 3,
+  maxParallel: 5,
   testCmd: "",
   buildCmd: "",
   intervalSeconds: 3600,
@@ -156,7 +156,7 @@ function scriptEnv(id) {
   env.ENV_DEST_REL = cfg.envDest || "";
   env.CLONE_BASE = cfg.cloneBase || path.join(cfg.workDir, "repos");
   env.LOOP_INTERVAL = String(cfg.intervalSeconds || 3600);
-  env.MAX_PARALLEL = String(cfg.maxParallel || 3);
+  env.MAX_PARALLEL = String(cfg.maxParallel || 5);
   env.DASHBOARD_URL = `http://localhost:${PORT}`;
   if (cred.anthropicApiKey) env.ANTHROPIC_API_KEY = cred.anthropicApiKey;
   if (cred.githubToken) { env.GH_TOKEN = cred.githubToken; env.GITHUB_TOKEN = cred.githubToken; }
