@@ -281,12 +281,38 @@ ${REPO_LIST_TEXT}
 4. 요청된 변경을 구현하세요.
 5. PR 전 검증: 테스트 수단(${TEST_DESC})이 있으면 통과할 때까지 수정, 없으면 빌드(${BUILD_DESC})만 시도(수단 없으면 생략).
 6. '같은 브랜치'에 커밋(메시지 하단에 '${ISSUE_KEY}' 명시) 후 'origin' 으로 push 하면 기존 PR 이 자동 갱신됩니다. (새 PR 생성 금지)
+   - [브랜치 위생] base(${BASE_BRANCH}) 반영/충돌 해소가 필요하면 '절대 base 를 브랜치로 merge 하지 말고'(merge 커밋은 'Rebase and merge' 를 막습니다) 'git rebase origin/${BASE_BRANCH}' 로 rebase 한 뒤 'git push --force-with-lease' 로 갱신하세요. 브랜치에 merge 커밋을 만들지 마세요.
    - env 파일(.env 또는 복사된 env)은 절대 커밋/푸시하지 마세요.
    - push 후 'gh pr edit <번호> --body-file <파일>' 로 그 PR 의 본문을 이번 리뷰 반영까지 포함한 최신 내용으로 갱신하세요.
      ${PR_BODY_INSTR}
 7. 반영 후 Jira 이슈 ${ISSUE_KEY} 에 '리뷰 반영 완료' 코멘트(반영 항목 요약 + 갱신된 PR URL)를 남기세요. 이슈 '상태는 변경하지 마세요'.
 PR 을 하나도 갱신하지 못했으면(반영할 PR 없음 등) 사유를 출력하고 비정상 종료하세요.
 완료 후 갱신한 PR URL 들을 출력하세요."
+elif [[ -n "${RESOLVE_CONFLICT:-}" ]]; then
+  echo ">> [${ISSUE_KEY}] [RESOLVE-CONFLICT] base 충돌 rebase 해소 + 재푸시${REWORK_ONLY_OWNER:+ · 대상 PR ${REWORK_ONLY_OWNER}#${REWORK_ONLY_NUM:-}}"
+  CONFLICT_FOCUS=""
+  if [[ -n "${REWORK_ONLY_OWNER:-}" && -n "${REWORK_ONLY_NUM:-}" ]]; then
+    CONFLICT_FOCUS="[대상 PR 한정] 이번 작업은 오직 '${REWORK_ONLY_OWNER}' 저장소의 PR #${REWORK_ONLY_NUM} 하나에만 수행하세요. 그 외 repo/PR 은 절대 건드리지 마세요.
+"
+  fi
+  PROMPT="${CONFLICT_FOCUS}당신은 Jira 이슈 ${ISSUE_KEY} 의 '기존 PR'의 base 브랜치 충돌을 'rebase'로 해소하고 같은 PR 을 갱신합니다. 새 PR/새 브랜치는 만들지 마세요.
+대상 repo 들은 아래 경로에 clone 되어 있습니다(여러 repo 일 수 있음):
+${REPO_LIST_TEXT}
+
+[매우 중요] 헤드리스 1회 실행입니다. 백그라운드로 미루지 말고 이 턴 안에서 끝까지 동기 수행하세요. 오래 걸리는 테스트/빌드는 Bash 'timeout' 파라미터를 넉넉히(최대 600000ms=10분) 줘서 '포그라운드'로 실행하세요(기본 120초를 넘기면 자동 백그라운드로 넘어가 헤드리스에서 유실됨). 'Monitor'·대기 루프·waiter 로 기다리며 턴을 끝내지 마세요.
+
+각 repo 에 대해(위 '대상 PR 한정' 이 있으면 그 PR 만):
+1. 'gh pr list --state open --search \"${ISSUE_KEY}\"' 로 이 이슈의 열린 PR 을 찾으세요. 없으면 그 repo 는 건너뜁니다.
+2. 그 PR 의 base·head 브랜치를 확인하세요: 'gh pr view <번호> --json baseRefName,headRefName,mergeable'.
+3. 'git fetch origin' 후 그 PR 의 head 브랜치를 checkout 하세요.
+4. base 최신을 반영해 충돌을 해소합니다: 'git rebase origin/<base>' 를 실행하세요.
+   - 이미 base 최신이라 rebase 가 불필요하면(충돌·뒤처짐 없음) 그 사유를 출력하고 이 repo 는 '건너뜁니다'. 절대 강제 푸시하지 마세요.
+   - 충돌이 나면, 각 충돌 파일을 열어 '양쪽 변경의 의도를 모두 보존'하도록 신중히 해소하세요(이 PR 의 작업 의도 + base 의 최신 변경 둘 다). 한쪽을 무성의하게 통째로 버리지 마세요. 해소한 파일마다 'git add <파일>' → 모두 처리되면 'git rebase --continue'. 남은 충돌이 없어질 때까지 반복하세요. 도저히 안전하게 해소할 수 없으면 'git rebase --abort' 후 사유를 출력하고 비정상 종료하세요(강제 푸시 금지).
+5. PR 전 검증(중요): rebase 로 깨진 게 없는지 확인하세요. 테스트 수단(${TEST_DESC})이 있으면 '포그라운드'로 통과할 때까지 수정, 없으면 빌드(${BUILD_DESC})만 시도(수단 없으면 생략). 검증 실패면 사유를 출력하고 비정상 종료하세요(푸시 금지).
+   - env 파일(.env 또는 복사된 env)은 절대 커밋/푸시하지 마세요.
+6. 검증 통과 후에만 'git push --force-with-lease origin <head 브랜치>' 로 그 PR 의 head 브랜치를 갱신하세요(rebase 라 force 필요). '--force-with-lease' 를 쓰고, 절대 base 브랜치(예: ${BASE_BRANCH})에는 push 하지 마세요. 새 PR 은 만들지 마세요.
+7. 갱신 후 Jira 이슈 ${ISSUE_KEY} 에 'base 충돌 rebase 해소 완료' 코멘트(해소한 repo/PR·검증 결과 요약 + PR URL)를 남기세요. 이슈 '상태·라벨은 바꾸지 마세요'.
+충돌을 하나도 해소하지 못했으면(해소 대상 없음 등) 사유를 출력하고 비정상 종료하세요. 완료 후 갱신한 PR URL 을 출력하세요."
 else
   echo ">> [${ISSUE_KEY}] [BUILD] 답변 반영 + 개발 + PR (대상 repo ${#R_URL[@]}개)"
   PROMPT="당신은 Jira 이슈 ${ISSUE_KEY} 를 아래 대상 repo 들에서 구현합니다(여러 repo 일 수 있음). 각 repo 는 표시된 경로에 clone 되어 있습니다:
@@ -299,6 +325,8 @@ ${REPO_LIST_TEXT}
   - 전체 스위트가 10분으로도 부족하면, 백그라운드 대기로 턴을 끝내지 말고 '변경 영향 범위의 모듈/클래스 단위'로 테스트를 좁혀 포그라운드에서 통과를 확인하세요(전체를 못 돌린 경우 그 사유를 출력).
   - 아직 끝나지 않은 백그라운드 작업이나 '나중에 확인하겠다'를 근거로 턴을 종료하지 마세요.
 테스트/빌드/커밋/푸시/PR/상태전환을 모두 '이 턴 안에서 동기적으로' 끝까지 수행한 뒤 종료하세요(오래 걸려도 끝까지 대기).
+
+[브랜치 위생 — 매우 중요] 작업 브랜치에 '절대 merge 커밋을 만들지 마세요'. base(${BASE_BRANCH})의 최신 변경을 반영하거나 base 와의 충돌을 해소할 때 'git merge origin/${BASE_BRANCH}'(= base 를 브랜치로 merge) 를 '절대 쓰지 마세요' — merge 커밋이 생기면 GitHub 의 'Rebase and merge' 가 막혀('This branch cannot be rebased due to conflicts') PR 병합이 어려워집니다. 대신 반드시 'git fetch origin && git rebase origin/${BASE_BRANCH}' 로 rebase 해서 브랜치를 base 위에 선형으로 유지하세요. rebase 중 충돌은 양쪽 의도를 보존해 해소('git add' → 'git rebase --continue')하고, '이미 원격에 push 된 브랜치를 rebase 했다면' 'git push --force-with-lease' 로 갱신하세요(아직 push 전이면 일반 push). base 브랜치 자체에는 절대 push 하지 마세요.
 PR 을 하나도 생성하지 못했다면 절대 완료로 간주하지 말고, 사유를 출력하고 비정상 종료하세요(다음 주기에 재시도됩니다).
 
 1. Jira 이슈 ${ISSUE_KEY} 의 설명과 '모든 코멘트'(특히 담당자 ${ASSIGNEE_NAME} 의 답변), 그리고 라벨을 읽으세요.

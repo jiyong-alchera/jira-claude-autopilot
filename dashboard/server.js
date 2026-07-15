@@ -202,7 +202,7 @@ function runOnce(type) {
   return { ok: true, pid: proc.pid };
 }
 // 특정 카드 1건 즉시 실행(프로젝트 env 주입)
-function runCard(key, phase, stamp, projectId, reposLines, rework, reviewAfter, reviewOnly, reworkOnly) {
+function runCard(key, phase, stamp, projectId, reposLines, rework, reviewAfter, reviewOnly, reworkOnly, resolveConflict) {
   const isReview = phase === "review";   // review 는 run-review.sh(PR 자동 리뷰), 그 외는 run-jira-agent.sh
   const script = path.join(SCRIPTS_DIR, isReview ? "run-review.sh" : "run-jira-agent.sh");
   if (!fs.existsSync(script)) return { ok: false, message: `스크립트를 찾을 수 없습니다: ${script}` };
@@ -210,11 +210,12 @@ function runCard(key, phase, stamp, projectId, reposLines, rework, reviewAfter, 
   let fd;
   try {
     fd = fs.openSync(logPath, "a");
-    fs.writeSync(fd, `[${stamp}] (단건 즉시 실행) ${rework ? "REWORK" : phase.toUpperCase()}: ${key} [${projectId}]\n`);
+    fs.writeSync(fd, `[${stamp}] (단건 즉시 실행) ${resolveConflict ? "RESOLVE-CONFLICT" : rework ? "REWORK" : phase.toUpperCase()}: ${key} [${projectId}]\n`);
   } catch (e) { return { ok: false, message: String(e.message || e) }; }
   const env = scriptEnv(projectId);
   if (reposLines != null) env.CARD_REPOS = reposLines;   // 카드 라벨로 좁힌 대상 repo
   if (rework) env.REWORK = "1";                          // 기존 PR 리뷰 반영 모드
+  if (resolveConflict) env.RESOLVE_CONFLICT = "1";       // base 충돌 rebase 해소 + force-push 모드
   if (reworkOnly && reworkOnly.owner && reworkOnly.number != null) { env.REWORK_ONLY_OWNER = String(reworkOnly.owner); env.REWORK_ONLY_NUM = String(reworkOnly.number); }  // 개별 PR 반영
   if (reviewAfter) env.REVIEW_AFTER = "1";               // 리뷰 반영 후 이어서 재리뷰(run-review.sh)
   if (isReview) env.FORCE_REVIEW = "1";                  // 수동 review: 승인 마커 있어도 강제 재리뷰
@@ -468,11 +469,13 @@ app.post("/api/cards/:key/run", async (req, res) => {
   const b = req.body || {};
   const phase = b.phase;
   const rework = !!b.rework;
+  const resolveConflict = !!b.resolveConflict;   // base 충돌 rebase 해소 모드(build 스크립트, force-push)
   if (!/^[A-Z][A-Z0-9]+-[0-9]+$/.test(key)) return res.status(400).json({ ok: false, message: "이슈 키 형식 오류" });
   if (!["plan", "build", "review"].includes(phase)) return res.status(400).json({ ok: false, message: "phase 는 plan|build|review" });
   try {
     const { id, cfg, cred } = resolveProject(req);
-    const reworkOnly = (rework && b.reworkOwner && b.reworkNumber != null) ? { owner: b.reworkOwner, number: String(b.reworkNumber) } : null;
+    // rework·충돌해소는 개별 PR(owner/number) 대상 → 그 PR 의 repo 로 한정
+    const reworkOnly = ((rework || resolveConflict) && b.reworkOwner && b.reworkNumber != null) ? { owner: b.reworkOwner, number: String(b.reworkNumber) } : null;
     let reposLines = null, repos = [];
     try {
       // review·개별 PR rework 는 연동 PR 이 어느 repo 에 있든 찾도록 전 repo, 그 외 build 는 카드 대상(라벨) repo
@@ -496,7 +499,7 @@ app.post("/api/cards/:key/run", async (req, res) => {
       }
     }
     const reviewOnly = (b.reviewOwner && b.reviewNumber != null) ? { owner: b.reviewOwner, number: b.reviewNumber } : null;
-    res.json(runCard(key, phase, new Date().toISOString(), id, reposLines, rework, !!b.reviewAfter, reviewOnly, reworkOnly));
+    res.json(runCard(key, phase, new Date().toISOString(), id, reposLines, rework, !!b.reviewAfter, reviewOnly, reworkOnly, resolveConflict));
   } catch (e) { fail(res, e); }
 });
 

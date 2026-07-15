@@ -483,6 +483,13 @@ function ProjectCard({ proj, onDeleted, flash }) {
     flash(r.ok ? `#${pr.number} 리뷰 실행 — 엔진 실행 로그(review) 확인` : (r.message || "실패"));
     if (r.ok) showClaudeLog(key, "review");
   };
+  // base 충돌을 rebase 로 해소하고 그 PR 브랜치를 force-push(--force-with-lease)로 갱신
+  const resolveConflictPr = async (key, pr) => {
+    if (!window.confirm(`#${pr.number} 의 base(${pr.base || "base"}) 충돌을 rebase 로 해소한 뒤 force-push 로 갱신합니다.\n\n히스토리가 재작성되고 기존 인라인 리뷰 스레드가 일부 끊길 수 있습니다. 진행할까요?`)) return;
+    const r = await api.post(`/api/cards/${key}/run`, { phase: "build", resolveConflict: true, reworkOwner: pr.owner, reworkNumber: pr.number, project: PID });
+    flash(r.ok ? `#${pr.number} 충돌 해소 실행 — 엔진 실행 로그(build) 확인` : (r.message || "실패"));
+    if (r.ok) showClaudeLog(key, "build");
+  };
   const showClaudeLog = async (key, phase) => { setClaudeLog({ key, phase, text: "불러오는 중…" }); const r = await api.get(withP(`/api/claude-log/${key}/${phase}?lines=600`)); setClaudeLog((p) => (p && p.key === key && p.phase === phase) ? { ...p, text: r.ok ? r.log : (r.message || "조회 실패") } : p); };
   const loadReviews = async (key) => {
     setReviews({ key, loading: true, prs: [] });
@@ -971,6 +978,7 @@ function ProjectCard({ proj, onDeleted, flash }) {
                                                 <button onClick={() => reviewOnePr(c.key, pr)} className="text-[11px] px-2 py-0.5 rounded border border-violet-500/40 text-violet-300 hover:bg-violet-500/10 transition">이 PR 리뷰 실행</button>
                                                 {c.assignedToMe && pr.isBot && pr.state === "OPEN" && <button onClick={() => reworkOnePr(c.key, pr, false)} className="text-[11px] px-2 py-0.5 rounded border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 transition">리뷰 반영</button>}
                                                 {c.assignedToMe && pr.isBot && pr.state === "OPEN" && <button onClick={() => reworkOnePr(c.key, pr, true)} className="text-[11px] px-2 py-0.5 rounded border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 transition">반영+재리뷰</button>}
+                                                {c.assignedToMe && pr.state === "OPEN" && pr.mergeable === "CONFLICTING" && <button onClick={() => resolveConflictPr(c.key, pr)} className="text-[11px] px-2 py-0.5 rounded border border-rose-500/50 text-rose-300 hover:bg-rose-500/10 transition" title="base 충돌을 rebase 로 해소하고 force-push 로 이 PR 을 갱신합니다(검증 후 푸시).">⚠️ 충돌 해소 후 재푸시</button>}
                                                 {c.assignedToMe && pr.state === "OPEN" && <button onClick={() => mergeOnePr(c.key, pr)} className="text-[11px] px-2 py-0.5 rounded border border-teal-500/40 text-teal-300 hover:bg-teal-500/10 transition">이 PR 병합</button>}
                                                 <a href={pr.url} target="_blank" rel="noreferrer" className="text-[11px] px-2 py-0.5 rounded border border-slate-600 text-slate-300 hover:bg-slate-600/20 transition">열기</a>
                                               </div>
