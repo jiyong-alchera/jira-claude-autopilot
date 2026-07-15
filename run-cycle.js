@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // run-cycle.js <plan|build>
 // --------------------------------------------------------------------------
-// 한 번의 사이클: 등록된 모든 프로젝트를 순회하며 detect → run-jira-claude.sh 실행.
+// 한 번의 사이클: 등록된 모든 프로젝트를 순회하며 detect → run-jira-agent.sh 실행.
 // 루프(loop-plan.sh/loop-build.sh)가 매 주기 이 스크립트를 호출한다.
 // - projects.json / project-credentials.json 을 직접 읽어 프로젝트별 env 를 구성
 // - 탐지: DASHBOARD_URL 있으면 /api/detect/<mode>?project=<id> 우선, 실패 시 detect-cards.sh 폴백
-// - 카드별 run-jira-claude.sh 를 프로젝트 MAX_PARALLEL 만큼 동시 실행
+// - 카드별 run-jira-agent.sh 를 프로젝트 MAX_PARALLEL 만큼 동시 실행
 // 출력은 stdout(상위 루프가 loop-<phase>.log 로 리다이렉트)
 // --------------------------------------------------------------------------
 const fs = require("fs");
@@ -208,7 +208,7 @@ async function runCard(key, env, cfg, cred) {
   const stateBase = cfg.cloneBase || path.join(cfg.workDir || SELF, "repos");
   e.SUMMARY_FILE = path.join(stateBase, ".state", `${key}.summary.md`);
   return new Promise((resolve) => {
-    const c = spawn("bash", [path.join(SELF, "run-jira-claude.sh"), key, phase], { env: e, stdio: "inherit" });
+    const c = spawn("bash", [path.join(SELF, "run-jira-agent.sh"), key, phase], { env: e, stdio: "inherit" });
     c.on("close", () => resolve());
     c.on("error", () => resolve());
   });

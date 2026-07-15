@@ -2,7 +2,7 @@
 #
 # lib-engine.sh — LLM 엔진 추상화(공통 헬퍼)
 # --------------------------------------------------------------------------
-# 헤드리스 개발/리뷰/탐지에 쓰는 CLI 를 엔진별로 추상화한다. run-jira-claude.sh /
+# 헤드리스 개발/리뷰/탐지에 쓰는 CLI 를 엔진별로 추상화한다. run-jira-agent.sh /
 # run-review.sh / detect-cards.sh 가 source 해서 사용한다.
 #
 # 사용 env:

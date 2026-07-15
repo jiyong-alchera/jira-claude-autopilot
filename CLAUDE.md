@@ -1,6 +1,6 @@
 # CLAUDE.md — 이 저장소에서 작업하는 Claude를 위한 규칙
 
-이 파일은 jira-claude-autopilot 저장소에서 개발 작업을 수행하는 Claude(및 사람 기여자)가
+이 파일은 jira-agent-autopilot 저장소에서 개발 작업을 수행하는 Claude(및 사람 기여자)가
 반드시 따라야 하는 규칙을 정의합니다. Claude Code는 작업 시 이 파일을 자동으로 읽습니다.
 
 ## 프로젝트 개요

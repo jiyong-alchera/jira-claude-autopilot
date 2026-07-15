@@ -27,7 +27,7 @@ loop-*.pid
 loop-*.ver
 
 # claude 카드별 실행 로그 (런타임 생성)
-claude-logs/
+agent-logs/
 
 # 의존성
 node_modules/

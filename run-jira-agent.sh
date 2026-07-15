@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# run-jira-claude.sh
+# run-jira-agent.sh
 # --------------------------------------------------------------------------
 # Jira 카드 기반으로 임의의 GitHub repo 개발을 반자동으로 진행하는 범용 스크립트.
 # 카드별로 독립 디렉토리(<repo이름>-<카드키>)에서 동작하므로 병렬 실행이 가능합니다.
@@ -17,8 +17,8 @@
 #                      → 카드 설명의 트리거 텍스트 위에 완료 요약 기입 → DONE_STATUS 전환
 #
 # 사용법:
-#   REPO_URL=https://github.com/Org/repo.git ./run-jira-claude.sh <ISSUE-KEY> plan
-#   REPO_URL=https://github.com/Org/repo.git ./run-jira-claude.sh <ISSUE-KEY> build
+#   REPO_URL=https://github.com/Org/repo.git ./run-jira-agent.sh <ISSUE-KEY> plan
+#   REPO_URL=https://github.com/Org/repo.git ./run-jira-agent.sh <ISSUE-KEY> build
 # --------------------------------------------------------------------------
 
 set -euo pipefail
@@ -342,7 +342,7 @@ mkdir -p "${STATE_DIR}"
 [[ "${PHASE}" == "build" ]] && rm -f "${SUMMARY_FILE}"
 
 # claude 상세 실행 로그(도구 호출/메시지/결과)를 카드별로 영속 기록 → 대시보드에서 조회
-CLAUDE_LOG_DIR="${WORK_DIR}/claude-logs"
+CLAUDE_LOG_DIR="${WORK_DIR}/agent-logs"
 mkdir -p "${CLAUDE_LOG_DIR}"
 CLAUDE_LOG="${CLAUDE_LOG_DIR}/${ISSUE_KEY}-${PHASE}.log"
 { echo ""; echo "===== $(date -u +%FT%TZ) ${ISSUE_KEY} ${PHASE} 실행 ====="; } >> "${CLAUDE_LOG}"

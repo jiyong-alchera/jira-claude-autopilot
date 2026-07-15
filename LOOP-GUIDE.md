@@ -8,7 +8,7 @@ plan(질문) → build(개발·PR·완료처리) 두 루프로 처리합니다. 
 
 | 파일 | 역할 |
 |------|------|
-| `run-jira-claude.sh` | 카드 1개를 plan 또는 build 로 처리 (카드별 `repos/<repo이름>-<키>` 디렉토리, 병렬 가능) |
+| `run-jira-agent.sh` | 카드 1개를 plan 또는 build 로 처리 (카드별 `repos/<repo이름>-<키>` 디렉토리, 병렬 가능) |
 | `detect-cards.sh` | JQL 로 plan/build 대상 카드 키 목록을 탐지 (claude + Atlassian MCP) |
 | `loop-plan.sh` | 1시간마다 plan 대상 탐지 → 카드별 병렬 plan 실행 |
 | `loop-build.sh` | 1시간마다 build 대상 탐지 → 카드별 병렬 build 실행 |
@@ -38,7 +38,7 @@ plan(질문) → build(개발·PR·완료처리) 두 루프로 처리합니다. 
 
 ```bash
 cd <작업폴더>   # 스크립트가 있는 폴더
-chmod +x run-jira-claude.sh detect-cards.sh loop-plan.sh loop-build.sh
+chmod +x run-jira-agent.sh detect-cards.sh loop-plan.sh loop-build.sh
 
 export REPO_URL="https://github.com/Org/repo.git"
 export BASE_BRANCH="main"

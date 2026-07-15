@@ -74,7 +74,7 @@ if [[ -n "${CARD_REPOS}" ]]; then
 fi
 if [[ ${#R_OWNER[@]} -eq 0 ]]; then echo "SKIP: [${ISSUE_KEY}] 대상 repo 없음"; exit 0; fi
 
-CLAUDE_LOG_DIR="${WORK_DIR}/claude-logs"; mkdir -p "${CLAUDE_LOG_DIR}"
+CLAUDE_LOG_DIR="${WORK_DIR}/agent-logs"; mkdir -p "${CLAUDE_LOG_DIR}"
 
 # 카드 첨부(이미지+문서) — run-cycle 가 CARD_IMAGES/CARD_DOCS 로 전달. Claude 가 Read 로 인식하도록 리뷰 프롬프트에 경로 주입.
 ATTACH_INSTR=""
@@ -136,10 +136,10 @@ for OR in "${R_OWNER[@]}"; do
         fi
         echo ">> [${ISSUE_KEY}] ${OR}#${N} 미승인 리뷰 ${BOT_REVIEW_CNT}건 존재 → 리뷰 반영(rework) 먼저 실행 후 재리뷰"
         reviewed_any=1
-        # run-review.sh 는 repo 를 clone 하지 않으므로 실제 코드 반영은 run-jira-claude.sh(build+REWORK)에 위임한다.
+        # run-review.sh 는 repo 를 clone 하지 않으므로 실제 코드 반영은 run-jira-agent.sh(build+REWORK)에 위임한다.
         # REVIEW_AFTER 는 주지 않는다 — 이 스크립트가 아래 리뷰 블록으로 갱신된 PR 을 이어서 리뷰하므로(review 락 재획득·재귀 방지).
         REWORK=1 REWORK_ONLY_OWNER="${OR}" REWORK_ONLY_NUM="${N}" \
-          bash "${SELF_DIR}/run-jira-claude.sh" "${ISSUE_KEY}" build \
+          bash "${SELF_DIR}/run-jira-agent.sh" "${ISSUE_KEY}" build \
           || echo ">> [${ISSUE_KEY}] ${OR}#${N} 리뷰 반영(rework) 실패/스킵 — 이어서 리뷰만 진행" >&2
       fi
     fi

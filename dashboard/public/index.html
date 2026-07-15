@@ -301,7 +301,7 @@ function InfoModal({ onClose }) {
         <ul className="list-disc pl-5 space-y-1">
           <Li><Code>projects.json</Code> / <Code>project-credentials.json</Code> — 프로젝트 설정·토큰(권한 600)</Li>
           <Li><Code>work-*.env</Code> — repo로 복사할 env, <Code>repos/</Code> — 카드별 clone</Li>
-          <Li><Code>loop-*.log</Code> / <Code>history.jsonl</Code> / <Code>claude-logs/</Code> — 로그·이력, <Code>loop-*.pid/.ver</Code> — 루프 상태</Li>
+          <Li><Code>loop-*.log</Code> / <Code>history.jsonl</Code> / <Code>agent-logs/</Code> — 로그·이력, <Code>loop-*.pid/.ver</Code> — 루프 상태</Li>
         </ul>
 
         <H>⑤ 동작 흐름</H>
@@ -449,7 +449,7 @@ function ProjectCard({ proj, onDeleted, flash }) {
     if (r.ok) { flash("답변 등록됨" + (replyAnswered ? " (claude-answered" + (r.movedTo ? ` · 상태→${r.movedTo}` : "") + ")" : "")); setReply(""); setReplyTarget(null); const d = await api.get(withP(`/api/jira/issue/${expandedKey}`)); if (d.ok) setDetail(d); loadCards(); }
     else flash(r.message || "등록 실패");
   };
-  const runCardNow = async (key, phase) => { const r = await api.post(`/api/cards/${key}/run`, { phase, project: PID }); flash(r.ok ? `${key} ${phase} 즉시 실행 — Claude 실행 로그 확인` : (r.message || "실패")); if (r.ok) showClaudeLog(key, phase); };
+  const runCardNow = async (key, phase) => { const r = await api.post(`/api/cards/${key}/run`, { phase, project: PID }); flash(r.ok ? `${key} ${phase} 즉시 실행 — 엔진 실행 로그 확인` : (r.message || "실패")); if (r.ok) showClaudeLog(key, phase); };
   const stopCard = async (key, phase) => { const r = await api.post(`/api/cards/${key}/stop`, { phase, project: PID }); flash(r.ok ? `${key} ${phase ? phase + " " : ""}${r.message}` : (r.message || "중지 실패")); loadCards(); };
   const reworkOnePr = async (key, pr, thenReview) => {
     const prId = `${pr.owner}#${pr.number}`;
@@ -480,7 +480,7 @@ function ProjectCard({ proj, onDeleted, flash }) {
   };
   const reviewOnePr = async (key, pr) => {
     const r = await api.post(`/api/cards/${key}/run`, { phase: "review", reviewOwner: pr.owner, reviewNumber: pr.number, project: PID });
-    flash(r.ok ? `#${pr.number} 리뷰 실행 — Claude 실행 로그(review) 확인` : (r.message || "실패"));
+    flash(r.ok ? `#${pr.number} 리뷰 실행 — 엔진 실행 로그(review) 확인` : (r.message || "실패"));
     if (r.ok) showClaudeLog(key, "review");
   };
   const showClaudeLog = async (key, phase) => { setClaudeLog({ key, phase, text: "불러오는 중…" }); const r = await api.get(withP(`/api/claude-log/${key}/${phase}?lines=600`)); setClaudeLog((p) => (p && p.key === key && p.phase === phase) ? { ...p, text: r.ok ? r.log : (r.message || "조회 실패") } : p); };
@@ -815,7 +815,7 @@ function ProjectCard({ proj, onDeleted, flash }) {
                             )}
                             {claudeLog && claudeLog.key === c.key && (
                               <div className="mb-4">
-                                <div className="flex items-center justify-between mb-1"><span className="text-xs text-slate-400">Claude 실행 로그 — {claudeLog.phase} (3초 갱신)</span><button onClick={() => setClaudeLog(null)} className="text-[11px] text-slate-400 hover:text-rose-300">닫기</button></div>
+                                <div className="flex items-center justify-between mb-1"><span className="text-xs text-slate-400">엔진 실행 로그 — {claudeLog.phase} (3초 갱신)</span><button onClick={() => setClaudeLog(null)} className="text-[11px] text-slate-400 hover:text-rose-300">닫기</button></div>
                                 <pre className="bg-black/60 border border-slate-700 rounded p-3 text-xs whitespace-pre-wrap text-slate-200 h-72 overflow-auto">{claudeLog.text || "(로그 없음)"}</pre>
                               </div>
                             )}
