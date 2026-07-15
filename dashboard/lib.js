@@ -54,6 +54,21 @@ function normalizeRepos(p) {
   if (p.repoUrl) return [{ name: repoNameFromUrl(p.repoUrl), url: p.repoUrl, baseBranch: p.baseBranch || "main", envDest: p.envDest || "" }];
   return [];
 }
+// ===== LLM 엔진 선택 =====
+// 지원 엔진과 전역 기본값. 프로젝트가 engine/model 을 비우면 이 기본값을 상속한다.
+const ENGINES = ["claude", "codex", "gemini"];
+const DEFAULT_ENGINE = "claude";
+const DEFAULT_MODEL = "";   // 비우면 엔진 CLI 의 기본 모델 사용
+
+// 프로젝트 설정에서 실제 사용할 엔진/모델을 해석한다(잘못된 값·빈 값은 전역 기본값으로 폴백).
+// 반환: { engine, model } — run-cycle.js·server.js 가 ENGINE/MODEL env 로 주입.
+function resolveEngine(cfg) {
+  const raw = (cfg && typeof cfg.engine === "string" ? cfg.engine : "").trim().toLowerCase();
+  const engine = ENGINES.includes(raw) ? raw : DEFAULT_ENGINE;
+  const model = (cfg && typeof cfg.model === "string" ? cfg.model : "").trim();
+  return { engine, model };
+}
+
 // 카드 라벨로 대상 repo 결정: repo_<name> 라벨과 매칭. 없으면 첫 repo(기본).
 function cardRepos(p, labels) {
   const repos = normalizeRepos(p);
@@ -290,4 +305,5 @@ module.exports = {
   adfToText, adfSegments, toADF, mdInline, mdToADF, buildReplyADF, maskCreds, applyCreds, createStore, doneStatusList, effectiveDoneStatuses,
   REPO_LABEL_PREFIX, repoNameFromUrl, normalizeRepos, cardRepos, REVIEW_APPROVED_MARKER,
   loadOrCreateEnvKey, encryptEnv, decryptEnv,
+  ENGINES, DEFAULT_ENGINE, DEFAULT_MODEL, resolveEngine,
 };

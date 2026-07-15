@@ -43,6 +43,9 @@ chmod +x run-jira-claude.sh detect-cards.sh loop-plan.sh loop-build.sh
 export REPO_URL="https://github.com/Org/repo.git"
 export BASE_BRANCH="main"
 export PROJECT_KEY="PROJ"
+# (선택) 엔진/모델 — 비우면 claude, 엔진 기본 모델 사용
+export ENGINE="claude"   # claude | codex | gemini
+export MODEL=""          # 예: opus / gpt-5-codex / gemini-2.5-pro
 # (필요시) ASSIGNEE_EMAIL, ASSIGNEE_NAME, ENV_SRC, CLONE_BASE 등도 export
 
 nohup ./loop-plan.sh  > /dev/null 2>&1 &

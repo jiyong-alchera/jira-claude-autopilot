@@ -23,6 +23,8 @@ set -euo pipefail
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORK_DIR="${WORK_DIR:-${SELF_DIR}}"
+# LLM 엔진 추상화(ENGINE/MODEL)
+source "${SELF_DIR}/lib-engine.sh"
 CLONE_BASE="${CLONE_BASE:-${WORK_DIR}/repos}"
 ASSIGNEE_NAME="${ASSIGNEE_NAME:-담당자}"
 HISTORY_FILE="${HISTORY_FILE:-${WORK_DIR}/history.jsonl}"
@@ -34,7 +36,7 @@ ISSUE_KEY="${1:-}"
 if [[ -z "${ISSUE_KEY}" ]]; then echo "Usage: $0 <JIRA-ISSUE-KEY>" >&2; exit 1; fi
 
 if ! command -v gh >/dev/null 2>&1; then echo "ERROR: 'gh' (GitHub CLI) 가 필요합니다." >&2; exit 1; fi
-if ! command -v claude >/dev/null 2>&1; then echo "ERROR: 'claude' 명령을 찾을 수 없습니다." >&2; exit 1; fi
+if ! engine_available; then echo "ERROR: 엔진 '$(engine_name)' 의 CLI 를 찾을 수 없습니다. 설치/PATH/로그인을 확인하세요." >&2; exit 1; fi
 
 record_history() {  # result pr
   local result="$1" pr="${2:-}" ts
@@ -178,12 +180,7 @@ for OR in "${R_OWNER[@]}"; do
     { echo ""; echo "===== $(date -u +%FT%TZ) ${ISSUE_KEY} ${OR}#${N} review ====="; } >> "${CLAUDE_LOG}"
     CLAUDE_OUT="${STATE_DIR}/${ISSUE_KEY}.review.out"
     set +e
-    if command -v node >/dev/null 2>&1 && [[ -f "${SELF_DIR}/render-claude-stream.js" ]]; then
-      claude -p "${PROMPT}" --output-format stream-json --verbose 2>>"${CLAUDE_LOG}" \
-        | node "${SELF_DIR}/render-claude-stream.js" "${CLAUDE_LOG}" | tee "${CLAUDE_OUT}"
-    else
-      claude -p "${PROMPT}" 2>&1 | tee "${CLAUDE_OUT}" >> "${CLAUDE_LOG}"
-    fi
+    engine_exec "${PROMPT}" "${CLAUDE_LOG}" "${CLAUDE_OUT}"
     set -e
 
     # 승인 여부 재확인(마커가 실제로 남았는지 GitHub 에서 확인 — 신뢰 가능한 판정)

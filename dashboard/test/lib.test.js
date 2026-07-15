@@ -302,3 +302,18 @@ test("createStore: 레거시 없으면 빈 목록", () => {
     assert.equal(s.defaultProjectId(), null);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test("resolveEngine: 기본값·override·잘못된 값 폴백", () => {
+  // 미설정 → 전역 기본값(claude), 모델 빈값
+  assert.deepEqual(lib.resolveEngine({}), { engine: "claude", model: "" });
+  assert.deepEqual(lib.resolveEngine({ engine: "" }), { engine: "claude", model: "" });
+  // 정상 override + 대소문자·공백 정규화
+  assert.deepEqual(lib.resolveEngine({ engine: "codex", model: "gpt-5-codex" }), { engine: "codex", model: "gpt-5-codex" });
+  assert.deepEqual(lib.resolveEngine({ engine: " Gemini ", model: " gemini-2.5-pro " }), { engine: "gemini", model: "gemini-2.5-pro" });
+  // 지원하지 않는 엔진 → 전역 기본값으로 폴백
+  assert.deepEqual(lib.resolveEngine({ engine: "gpt4", model: "x" }), { engine: "claude", model: "x" });
+  // 타입 방어(문자열 아님) → 기본값
+  assert.deepEqual(lib.resolveEngine({ engine: 123, model: null }), { engine: "claude", model: "" });
+  // 지원 엔진 목록
+  assert.deepEqual(lib.ENGINES, ["claude", "codex", "gemini"]);
+});

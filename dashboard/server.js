@@ -56,6 +56,8 @@ const DEFAULT_CONFIG = {
   envDest: "",                                  // repo 내 복사 대상 상대경로(비우면 루트). 예: src/main/resources/application-private.properties
   cloneBase: path.join(SCRIPTS_DIR, "repos"),
   cardEnvDir: "",                               // 카드 전용 env 보관 디렉토리(비우면 <workDir>/card-envs)
+  engine: "",                                   // LLM 엔진(claude|codex|gemini). 비우면 전역 기본값(claude)
+  model: "",                                    // 엔진에 넘길 모델명. 비우면 엔진 기본 모델
 };
 
 // ----- 순수 로직 + 프로젝트 스토어 (단위 테스트 대상은 lib.js 로 분리) -----
@@ -134,6 +136,9 @@ function scriptEnv(id) {
   const repos = normalizeRepos(cfg);
   env.PROJECT_ID = cfg.id || "";
   env.WORK_DIR = cfg.workDir;
+  const eng = lib.resolveEngine(cfg);   // 프로젝트 override → 없으면 전역 기본값
+  env.ENGINE = eng.engine;
+  env.MODEL = eng.model;
   env.REPO_URL = (repos[0] && repos[0].url) || cfg.repoUrl || "";   // 폴백용 첫 repo
   env.BASE_BRANCH = (repos[0] && repos[0].baseBranch) || cfg.baseBranch || "main";
   env.CARD_REPOS = reposToLines(cfg, repos);                         // 기본=전체 repo(카드 라벨로 좁혀짐)
@@ -373,19 +378,29 @@ async function jiraAttach(issueKey, filename, dataBase64, contentType, cfg, cred
   const txt = await res.text();
   if (!res.ok) throw new Error(`${res.status}: ${txt.slice(0, 200)}`);
 }
-function runClaude(prompt, cred, timeoutMs = 120000) {
+// 선택 엔진(claude|codex|gemini)으로 헤드리스 1회 실행. eng={engine,model} 는 lib.resolveEngine 결과.
+function llmArgv(prompt, eng) {
+  const model = (eng && eng.model) || "";
+  switch ((eng && eng.engine) || "claude") {
+    case "codex":  return ["codex", ["exec", ...(model ? ["-m", model] : []), prompt]];
+    case "gemini": return ["gemini", [...(model ? ["-m", model] : []), "-p", prompt]];
+    default:       return ["claude", ["-p", ...(model ? ["--model", model] : []), prompt]];
+  }
+}
+function runClaude(prompt, cred, eng = null, timeoutMs = 120000) {
+  const [bin, args] = llmArgv(prompt, eng || {});
   return new Promise((resolve, reject) => {
     const env = { ...process.env };
     if (cred && cred.anthropicApiKey) env.ANTHROPIC_API_KEY = cred.anthropicApiKey;
     let child;
-    try { child = spawn("claude", ["-p", prompt], { env }); }
-    catch (e) { return reject(new Error("claude 실행 실패: " + e.message)); }
+    try { child = spawn(bin, args, { env }); }
+    catch (e) { return reject(new Error(`${bin} 실행 실패: ` + e.message)); }
     let out = "", err = "";
-    const timer = setTimeout(() => { try { child.kill("SIGKILL"); } catch {} reject(new Error("claude 응답 시간 초과")); }, timeoutMs);
+    const timer = setTimeout(() => { try { child.kill("SIGKILL"); } catch {} reject(new Error(`${bin} 응답 시간 초과`)); }, timeoutMs);
     child.stdout.on("data", (d) => (out += d));
     child.stderr.on("data", (d) => (err += d));
-    child.on("error", (e) => { clearTimeout(timer); reject(new Error("claude 실행 실패(설치/PATH 확인): " + e.message)); });
-    child.on("close", (code) => { clearTimeout(timer); code === 0 ? resolve(out.trim()) : reject(new Error(`claude 종료 코드 ${code}: ${err.slice(0, 300)}`)); });
+    child.on("error", (e) => { clearTimeout(timer); reject(new Error(`${bin} 실행 실패(설치/PATH/로그인 확인): ` + e.message)); });
+    child.on("close", (code) => { clearTimeout(timer); code === 0 ? resolve(out.trim()) : reject(new Error(`${bin} 종료 코드 ${code}: ${err.slice(0, 300)}`)); });
   });
 }
 
@@ -820,7 +835,7 @@ app.get("/api/jira/meta", async (req, res) => {
 // 러프 설명 → Claude 정리
 app.post("/api/ai/refine-description", async (req, res) => {
   try {
-    const { cred } = resolveProject(req);
+    const { cfg, cred } = resolveProject(req);
     const b = req.body || {};
     const text = String(b.text || "").trim();
     if (!text) throw new Error("변환할 설명을 입력하세요.");
@@ -834,7 +849,7 @@ app.post("/api/ai/refine-description", async (req, res) => {
 [제목] ${String(b.summary || "").trim() || "(없음)"}
 [러프 설명]
 ${text}`;
-    const refined = await runClaude(prompt, cred);
+    const refined = await runClaude(prompt, cred, lib.resolveEngine(cfg));
     if (!refined) throw new Error("변환 결과가 비어 있습니다.");
     res.json({ ok: true, description: refined });
   } catch (e) { fail(res, e); }
@@ -861,7 +876,7 @@ app.post("/api/jira/issue/:key/enhance", async (req, res) => {
 [제목] ${summary || "(없음)"}
 [기존 본문]
 ${current || "(본문 없음)"}`;
-    const enhanced = await runClaude(prompt, cred);
+    const enhanced = await runClaude(prompt, cred, lib.resolveEngine(cfg));
     if (!enhanced) throw new Error("고도화 결과가 비어 있습니다.");
     res.json({ ok: true, description: enhanced, heading: ENHANCE_HEADING });
   } catch (e) { fail(res, e); }

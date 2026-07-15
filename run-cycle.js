@@ -121,6 +121,7 @@ const DEFAULTS = {
   doneStatus: "DEV COMPLETED", plannedLabel: "claude-planned", answeredLabel: "claude-answered", failedLabel: "claude-failed", prOpenLabel: "claude-pr",
   maxRetries: 3, maxParallel: 5, intervalSeconds: 3600, reviewIntervalSeconds: 3600, envMode: "content", envPath: "", envDest: "", cardEnvDir: "", cloneBase: path.join(SELF, "repos"),
   testCmd: "", buildCmd: "", repoUrl: "", jiraSite: "", projectKey: "", assigneeEmail: "", assigneeName: "",
+  engine: "", model: "",   // 비우면 전역 기본값(claude) 상속
 };
 
 function projectEnv(p, cred) {
@@ -129,6 +130,9 @@ function projectEnv(p, cred) {
   const env = { ...process.env };
   env.PROJECT_ID = cfg.id || "";
   env.WORK_DIR = cfg.workDir;
+  const eng = lib.resolveEngine(cfg);   // 프로젝트 override → 없으면 전역 기본값
+  env.ENGINE = eng.engine;
+  env.MODEL = eng.model;
   env.REPO_URL = (repos[0] && repos[0].url) || cfg.repoUrl || "";
   env.BASE_BRANCH = (repos[0] && repos[0].baseBranch) || cfg.baseBranch || "main";
   env.CARD_REPOS = reposToLines(cfg, repos);   // 기본=전체 repo(카드별로 좁혀짐)

@@ -17,6 +17,10 @@
 
 set -uo pipefail
 
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# LLM 엔진 추상화(ENGINE/MODEL) — 탐지 폴백에도 선택 엔진 사용
+source "${SELF_DIR}/lib-engine.sh"
+
 MODE="${1:-plan}"
 DONE_STATUS="${DONE_STATUS:-DEV COMPLETED}"
 TRIGGER_MODE="${TRIGGER_MODE:-label}"          # label | text — 트리거 판정 방식
@@ -28,8 +32,8 @@ FAILED_LABEL="${FAILED_LABEL:-claude-failed}"   # 반복 실패 카드는 탐지
 PR_OPEN_LABEL="${PR_OPEN_LABEL:-claude-pr}"     # review 모드: PR 올린(병합 대기) 카드 표시
 PROJECT_KEY="${PROJECT_KEY:-}"   # 설정 시 'AND project = X' 필터 추가
 
-if ! command -v claude >/dev/null 2>&1; then
-  echo "ERROR: 'claude' 명령을 찾을 수 없습니다." >&2
+if ! engine_available; then
+  echo "ERROR: 엔진 '$(engine_name)' 의 CLI 를 찾을 수 없습니다." >&2
   exit 1
 fi
 
@@ -86,5 +90,5 @@ ${JQL}
 설명, 마크다운, 코드블록, 그 외 어떤 텍스트도 출력하지 마세요. 오직 key 들만 출력하세요.
 검색 결과가 없으면 'NONE' 한 줄만 출력하세요."
 
-# claude 출력에서 이슈키(PROJ-숫자) 패턴만 추출 (그 외 잡텍스트 제거)
-claude -p "${PROMPT}" 2>/dev/null | grep -oE '[A-Z][A-Z0-9]+-[0-9]+' | sort -u
+# 엔진 출력에서 이슈키(PROJ-숫자) 패턴만 추출 (그 외 잡텍스트 제거)
+engine_run_text "${PROMPT}" 2>/dev/null | grep -oE '[A-Z][A-Z0-9]+-[0-9]+' | sort -u

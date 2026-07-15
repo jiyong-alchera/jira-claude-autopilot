@@ -26,6 +26,9 @@ set -euo pipefail
 # 스크립트가 위치한 폴더 (기본 작업 폴더로 사용)
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# LLM 엔진 추상화(ENGINE/MODEL). run-cycle.js·server.js 가 env 로 주입한다.
+source "${SELF_DIR}/lib-engine.sh"
+
 # ===== 설정 (환경변수로 주입 가능, 없으면 기본값) =====
 WORK_DIR="${WORK_DIR:-${SELF_DIR}}"
 REPO_URL="${REPO_URL:-}"                       # 필수: 대상 GitHub repo URL
@@ -137,12 +140,14 @@ record_history_prs() {
 }
 
 # ===== 필수 도구 확인 =====
-for cmd in git claude; do
-  if ! command -v "${cmd}" >/dev/null 2>&1; then
-    echo "ERROR: '${cmd}' 명령을 찾을 수 없습니다. 설치/PATH 를 확인하세요." >&2
-    exit 1
-  fi
-done
+if ! command -v git >/dev/null 2>&1; then
+  echo "ERROR: 'git' 명령을 찾을 수 없습니다. 설치/PATH 를 확인하세요." >&2
+  exit 1
+fi
+if ! engine_available; then
+  echo "ERROR: 엔진 '$(engine_name)' 의 CLI 를 찾을 수 없습니다. 설치/PATH/로그인을 확인하세요." >&2
+  exit 1
+fi
 if [[ "${PHASE}" == "build" ]] && ! command -v gh >/dev/null 2>&1; then
   echo "ERROR: PR 생성을 위해 'gh' (GitHub CLI) 가 필요합니다. 'brew install gh && gh auth login'" >&2
   exit 1
@@ -287,7 +292,7 @@ else
   PROMPT="당신은 Jira 이슈 ${ISSUE_KEY} 를 아래 대상 repo 들에서 구현합니다(여러 repo 일 수 있음). 각 repo 는 표시된 경로에 clone 되어 있습니다:
 ${REPO_LIST_TEXT}
 
-[매우 중요 — 실행 방식 제약] 이 작업은 대화형이 아닌 '헤드리스 1회 실행(claude -p)'입니다. 이 턴이 끝나면 프로세스는 즉시 종료되며, 어떤 예약된 재개도 일어나지 않습니다. 따라서:
+[매우 중요 — 실행 방식 제약] 이 작업은 대화형이 아닌 '헤드리스 1회 실행'입니다. 이 턴이 끝나면 프로세스는 즉시 종료되며, 어떤 예약된 재개도 일어나지 않습니다. 따라서:
   - 'run_in_background', 'ScheduleWakeup', 'Monitor', 'send_later', 백그라운드 프로세스('&', nohup 등), wakeup/알림 예약을 '절대' 사용하지 마세요. 이런 걸 걸고 턴을 끝내면 예약은 실행되지 않고 작업은 미완으로 유실됩니다.
   - 테스트·빌드는 반드시 '포그라운드'로 실행하고, 그 명령이 완전히 끝나 종료 코드를 받을 때까지 '그 자리에서' 기다리세요(수 분 이상 걸려도 그대로 대기). '테스트가 도는 동안 다른 일을 준비'하려 하지 말고, 결과를 받은 '뒤에야' 커밋/푸시/PR 로 진행하세요.
   - 아직 끝나지 않은 백그라운드 작업이나 '나중에 확인하겠다'를 근거로 턴을 종료하지 마세요.
@@ -342,22 +347,11 @@ mkdir -p "${CLAUDE_LOG_DIR}"
 CLAUDE_LOG="${CLAUDE_LOG_DIR}/${ISSUE_KEY}-${PHASE}.log"
 { echo ""; echo "===== $(date -u +%FT%TZ) ${ISSUE_KEY} ${PHASE} 실행 ====="; } >> "${CLAUDE_LOG}"
 
-# stream-json + 렌더러로 과정을 사람이 읽게 기록하고 최종 결과 텍스트는 CLAUDE_OUT 으로 추출.
-# node/렌더러가 없으면 기존 텍스트 모드로 폴백(자동화 동작에는 영향 없음).
+# 엔진 실행: claude 는 stream-json 렌더 로그, codex/gemini 는 평문 로그로 폴백.
+# 최종 결과 텍스트는 CLAUDE_OUT 으로 추출, 종료코드는 ENGINE_STATUS.
 set +e
-if command -v node >/dev/null 2>&1 && [[ -f "${SELF_DIR}/render-claude-stream.js" ]]; then
-  claude -p "${PROMPT}" --output-format stream-json --verbose 2>>"${CLAUDE_LOG}" \
-    | node "${SELF_DIR}/render-claude-stream.js" "${CLAUDE_LOG}" \
-    | tee "${CLAUDE_OUT}"
-  # PIPESTATUS 는 다음 명령에서 리셋되므로 한 번에 배열로 캡처(세미콜론 분리 금지)
-  PIPE_ST=("${PIPESTATUS[@]}")
-  CSTATUS=${PIPE_ST[0]:-1}; RSTATUS=${PIPE_ST[1]:-0}
-  [[ "${CSTATUS}" -eq 0 && "${RSTATUS}" -eq 0 ]]; CLAUDE_OK=$?
-else
-  claude -p "${PROMPT}" 2>&1 | tee "${CLAUDE_OUT}"
-  CLAUDE_OK=${PIPESTATUS[0]}
-  cat "${CLAUDE_OUT}" >> "${CLAUDE_LOG}" 2>/dev/null || true
-fi
+engine_exec "${PROMPT}" "${CLAUDE_LOG}" "${CLAUDE_OUT}"
+[[ "${ENGINE_STATUS}" -eq 0 ]]; CLAUDE_OK=$?
 set -e
 
 # 결과 분류: PR/브랜치 추출 + 미완료 감지
@@ -438,7 +432,7 @@ else
   if (( count >= MAX_RETRIES )); then
     echo ">> [${ISSUE_KEY}] 최대 재시도(${MAX_RETRIES}) 초과 → '${FAILED_LABEL}' 라벨 + 실패 코멘트" >&2
     ERR_TAIL="$(tail -n 25 "${CLAUDE_OUT}" 2>/dev/null || true)"
-    claude -p "Jira 이슈 ${ISSUE_KEY} 의 자동화 처리가 ${MAX_RETRIES}회 연속 실패했습니다.
+    engine_run_text "Jira 이슈 ${ISSUE_KEY} 의 자동화 처리가 ${MAX_RETRIES}회 연속 실패했습니다.
 다음만 수행하고, 코드 변경/커밋/PR 은 절대 하지 마세요:
 1) 이슈 ${ISSUE_KEY} 에 '${FAILED_LABEL}' 라벨을 추가하세요.
 2) 담당자(${ASSIGNEE_NAME})를 멘션해, 자동화가 반복 실패하여 수동 확인이 필요하다는 코멘트를 남기세요.

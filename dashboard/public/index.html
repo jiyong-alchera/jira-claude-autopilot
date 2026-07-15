@@ -515,6 +515,19 @@ function ProjectCard({ proj, onDeleted, flash }) {
         <Field label="담당자 이름" value={config.assigneeName} onChange={(v) => setConfig({ ...config, assigneeName: v })}
           info={"카드 담당자의 표시 이름입니다. 예: 홍길동(Gil-dong)\n\nplan 단계 질문 코멘트·리뷰 반영·실패 코멘트에서 담당자를 멘션/지칭할 때 사용됩니다."} />
         <label className="block mb-3">
+          <span className="text-sm text-slate-400 inline-flex items-center gap-1">LLM 엔진<InfoTip title="LLM 엔진" text={"plan/build/review/탐지에 사용할 CLI 엔진입니다.\n\n• Claude(기본): stream-json 으로 대시보드에 단계별 상세 로그가 남습니다.\n• Codex(OpenAI) / Gemini(Google): 각 CLI 가 설치·로그인돼 있어야 하며, 상세 로그는 평문으로만 남습니다.\n\n비우면 전역 기본값(Claude)을 사용합니다."} /></span>
+          <select value={config.engine || ""} onChange={(e) => setConfig({ ...config, engine: e.target.value })}
+            className="mt-1 w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400">
+            <option value="">전역 기본값 (Claude)</option>
+            <option value="claude">Claude</option>
+            <option value="codex">Codex (OpenAI)</option>
+            <option value="gemini">Gemini (Google)</option>
+          </select>
+        </label>
+        <Field label="모델 (비우면 엔진 기본값)" value={config.model} onChange={(v) => setConfig({ ...config, model: v })}
+          placeholder={(config.engine === "codex") ? "예: gpt-5-codex" : (config.engine === "gemini") ? "예: gemini-2.5-pro" : "예: opus / sonnet"}
+          info={"엔진에 넘길 모델명입니다(엔진의 --model/-m 로 전달). 비우면 각 엔진 CLI 의 기본 모델을 사용합니다.\n\n• Claude: opus, sonnet 등\n• Codex: gpt-5-codex 등\n• Gemini: gemini-2.5-pro 등\n\n엔진마다 유효한 모델명이 다르니 해당 CLI 문서를 따르세요."} />
+        <label className="block mb-3">
           <span className="text-sm text-slate-400 inline-flex items-center gap-1">트리거 방식<InfoTip title="트리거 방식" text={"어떤 신호로 '자동화 대상 카드'를 판정할지 정합니다.\n\n• 라벨(권장): 아래 '트리거 라벨'이 붙은 카드만 대상. 정확하고 안전합니다.\n• 텍스트(레거시): 카드 설명에 '트리거 텍스트'가 포함된 카드를 대상."} /></span>
           <select value={config.triggerMode || "label"} onChange={(e) => setConfig({ ...config, triggerMode: e.target.value })}
             className="mt-1 w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400">
