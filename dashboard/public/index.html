@@ -286,7 +286,7 @@ function InfoModal({ onClose }) {
         <H>② 자격증명 (프로젝트별 · 자격증명 섹션에서 입력)</H>
         <ul className="list-disc pl-5 space-y-1">
           <Li><b>Atlassian 이메일 + API 토큰</b> — 카드 조회·탐지·등록·답변(필수). <Code>id.atlassian.com</Code> 에서 발급</Li>
-          <Li><b>Anthropic API Key</b> — 루프 내 claude 인증(없으면 로컬 claude 로그인 폴백)</Li>
+          <Li><b>Anthropic / OpenAI / Gemini API Key</b> — 선택한 LLM 엔진 인증(없으면 각 CLI 로컬 로그인 폴백). 엔진에 맞는 키만 있으면 됩니다</Li>
           <Li><b>GitHub Token</b> — clone/push/PR(없으면 로컬 gh auth 폴백, repo 쓰기 권한 필요)</Li>
           <Li><b>Slack Webhook</b> — 처리 완료/실패 알림(선택)</Li>
         </ul>
@@ -320,7 +320,7 @@ function ProjectCard({ proj, onDeleted, flash }) {
 
   const [config, setConfig] = useState(proj);
   const [creds, setCreds] = useState({});
-  const [credInput, setCredInput] = useState({ anthropicApiKey: "", githubToken: "", atlassianEmail: "", atlassianToken: "", slackWebhookUrl: "" });
+  const [credInput, setCredInput] = useState({ anthropicApiKey: "", openaiApiKey: "", geminiApiKey: "", githubToken: "", atlassianEmail: "", atlassianToken: "", slackWebhookUrl: "" });
   const [jiraMeta, setJiraMeta] = useState({ issueTypes: [], epics: [], loaded: false, err: "" });
   const [jiraStatuses, setJiraStatuses] = useState({ list: [], loaded: false, err: "" });   // 상태→단계 매핑 UI용
   const [newCard, setNewCard] = useState({ issueType: "", summary: "", description: "", epicKey: "", parentInput: "", addTriggerLabel: true, assignSelf: true, attachments: [], repos: [], env: "" });
@@ -388,7 +388,7 @@ function ProjectCard({ proj, onDeleted, flash }) {
   const saveConfig = async () => { const r = await api.post("/api/projects", { ...config, id: PID }); if (r.ok) { setConfig(r.project); flash("설정 저장됨"); } };
   const saveCreds = async () => {
     await api.post(`/api/projects/${PID}/credentials`, credInput);
-    setCredInput((p) => ({ ...p, anthropicApiKey: "", githubToken: "", atlassianToken: "", slackWebhookUrl: "" }));
+    setCredInput((p) => ({ ...p, anthropicApiKey: "", openaiApiKey: "", geminiApiKey: "", githubToken: "", atlassianToken: "", slackWebhookUrl: "" }));
     loadCreds(); flash("자격증명 저장됨");
   };
   const refineDesc = async () => {
@@ -639,7 +639,11 @@ function ProjectCard({ proj, onDeleted, flash }) {
       <SubSection title="자격증명 (이 프로젝트 전용)" right={<Btn onClick={saveCreds}>자격증명 저장</Btn>}>
         <div className="grid grid-cols-2 gap-x-5">
           <Field label={`Anthropic API Key ${credSet("anthropicApiKey") ? "✓" : ""}`} type="password" value={credInput.anthropicApiKey} onChange={(v) => setCredInput({ ...credInput, anthropicApiKey: v })} placeholder={credSet("anthropicApiKey") ? "••• 저장됨" : "sk-ant-..."}
-            info={"루프가 claude를 호출할 때 쓰는 Anthropic API 키(sk-ant-...)입니다.\n\n비우면 로컬 claude 로그인(구독 인증)으로 폴백합니다. 로컬 claude에 이미 로그인돼 있으면 비워도 동작합니다.\n\n토큰은 이 대시보드 밖으로 전송되지 않습니다."} />
+            info={"엔진=claude 일 때 쓰는 Anthropic API 키(sk-ant-...)입니다.\n\n비우면 로컬 claude 로그인(구독 인증)으로 폴백합니다. 로컬 claude에 이미 로그인돼 있으면 비워도 동작합니다.\n\n토큰은 이 대시보드 밖으로 전송되지 않습니다."} />
+          <Field label={`OpenAI API Key ${credSet("openaiApiKey") ? "✓" : ""}`} type="password" value={credInput.openaiApiKey} onChange={(v) => setCredInput({ ...credInput, openaiApiKey: v })} placeholder={credSet("openaiApiKey") ? "••• 저장됨" : "sk-..."}
+            info={"엔진=codex 일 때 쓰는 OpenAI API 키입니다(OPENAI_API_KEY 로 주입).\n\n비우면 로컬 codex 로그인(codex login)으로 폴백합니다. 엔진이 codex 가 아니면 사용되지 않습니다."} />
+          <Field label={`Gemini API Key ${credSet("geminiApiKey") ? "✓" : ""}`} type="password" value={credInput.geminiApiKey} onChange={(v) => setCredInput({ ...credInput, geminiApiKey: v })} placeholder={credSet("geminiApiKey") ? "••• 저장됨" : "AIza..."}
+            info={"엔진=gemini 일 때 쓰는 Google Gemini API 키입니다(GEMINI_API_KEY 로 주입).\n\n비우면 로컬 gemini 로그인으로 폴백합니다. 엔진이 gemini 가 아니면 사용되지 않습니다."} />
           <Field label={`GitHub Token ${credSet("githubToken") ? "✓" : ""}`} type="password" value={credInput.githubToken} onChange={(v) => setCredInput({ ...credInput, githubToken: v })} placeholder={credSet("githubToken") ? "••• 저장됨" : "ghp_..."}
             info={"repo clone/push와 PR 생성·병합·리뷰(gh CLI)에 쓰는 GitHub 토큰(ghp_...)입니다.\n\n대상 repo에 대한 'repo' 권한이 필요합니다. 비우면 로컬 gh auth 로그인으로 폴백합니다."} />
           <Field label="Atlassian 이메일" value={credInput.atlassianEmail} onChange={(v) => setCredInput({ ...credInput, atlassianEmail: v })} placeholder="you@company.com"

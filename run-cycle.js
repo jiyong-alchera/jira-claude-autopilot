@@ -155,6 +155,8 @@ function projectEnv(p, cred) {
   env.ENV_DEST_REL = cfg.envDest || "";
   env.CLONE_BASE = cfg.cloneBase || path.join(cfg.workDir || SELF, "repos");
   if (cred && cred.anthropicApiKey) env.ANTHROPIC_API_KEY = cred.anthropicApiKey;
+  if (cred && cred.openaiApiKey) env.OPENAI_API_KEY = cred.openaiApiKey;   // codex 엔진
+  if (cred && cred.geminiApiKey) env.GEMINI_API_KEY = cred.geminiApiKey;   // gemini 엔진
   if (cred && cred.githubToken) { env.GH_TOKEN = cred.githubToken; env.GITHUB_TOKEN = cred.githubToken; }
   if (cred && cred.slackWebhookUrl) env.SLACK_WEBHOOK_URL = cred.slackWebhookUrl;
   // 완료 내역을 설명 ADF 에 직접 append(이미지 보존)하기 위한 Jira REST 자격증명

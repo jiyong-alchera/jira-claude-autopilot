@@ -192,14 +192,16 @@ test("buildReplyADF: replyTo 없으면 인용/멘션 없음", () => {
 });
 
 test("maskCreds: 토큰은 boolean, 이메일은 평문", () => {
-  const m = lib.maskCreds({ anthropicApiKey: "sk", githubToken: "", atlassianEmail: "a@b.c", atlassianToken: "t", slackWebhookUrl: "u" });
-  assert.deepEqual(m, { anthropicApiKey: true, githubToken: false, atlassianEmail: "a@b.c", atlassianToken: true, slackWebhookUrl: true });
+  const m = lib.maskCreds({ anthropicApiKey: "sk", openaiApiKey: "", geminiApiKey: "g", githubToken: "", atlassianEmail: "a@b.c", atlassianToken: "t", slackWebhookUrl: "u" });
+  assert.deepEqual(m, { anthropicApiKey: true, openaiApiKey: false, geminiApiKey: true, githubToken: false, atlassianEmail: "a@b.c", atlassianToken: true, slackWebhookUrl: true });
 });
 
 test("applyCreds: 빈값 유지 / __CLEAR__ 삭제 / 값 갱신", () => {
-  const cur = { anthropicApiKey: "old", githubToken: "gh", atlassianEmail: "a@b", atlassianToken: "tok", slackWebhookUrl: "u" };
-  const next = lib.applyCreds(cur, { anthropicApiKey: "", githubToken: "new", atlassianToken: "__CLEAR__" });
+  const cur = { anthropicApiKey: "old", openaiApiKey: "oa", geminiApiKey: "ge", githubToken: "gh", atlassianEmail: "a@b", atlassianToken: "tok", slackWebhookUrl: "u" };
+  const next = lib.applyCreds(cur, { anthropicApiKey: "", openaiApiKey: "new-oa", geminiApiKey: "__CLEAR__", githubToken: "new", atlassianToken: "__CLEAR__" });
   assert.equal(next.anthropicApiKey, "old");   // 빈값 → 유지
+  assert.equal(next.openaiApiKey, "new-oa");    // 값 → 갱신
+  assert.equal(next.geminiApiKey, "");          // __CLEAR__ → 삭제
   assert.equal(next.githubToken, "new");        // 값 → 갱신
   assert.equal(next.atlassianToken, "");        // __CLEAR__ → 삭제
   assert.equal(next.slackWebhookUrl, "u");      // 미지정 → 유지

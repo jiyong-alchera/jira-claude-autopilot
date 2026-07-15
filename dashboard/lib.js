@@ -27,7 +27,7 @@ function decryptEnv(data, key) {
   return Buffer.concat([d.update(buf.subarray(28)), d.final()]).toString("utf8");
 }
 
-const DEFAULT_CREDS = { anthropicApiKey: "", githubToken: "", atlassianEmail: "", atlassianToken: "", slackWebhookUrl: "" };
+const DEFAULT_CREDS = { anthropicApiKey: "", openaiApiKey: "", geminiApiKey: "", githubToken: "", atlassianEmail: "", atlassianToken: "", slackWebhookUrl: "" };
 
 const readJson = (p, f) => { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return f; } };
 const writeJson = (p, obj, mode) => fs.writeFileSync(p, JSON.stringify(obj, null, 2), { mode: mode || 0o644 });
@@ -242,7 +242,7 @@ function buildReplyADF(body, replyTo) {
 
 function maskCreds(c) {
   return {
-    anthropicApiKey: !!c.anthropicApiKey, githubToken: !!c.githubToken,
+    anthropicApiKey: !!c.anthropicApiKey, openaiApiKey: !!c.openaiApiKey, geminiApiKey: !!c.geminiApiKey, githubToken: !!c.githubToken,
     atlassianEmail: c.atlassianEmail || "", atlassianToken: !!c.atlassianToken, slackWebhookUrl: !!c.slackWebhookUrl,
   };
 }
@@ -251,6 +251,8 @@ function applyCreds(cur, b) {
   const apply = (k) => (b[k] === undefined ? cur[k] : b[k] === "__CLEAR__" ? "" : b[k] === "" ? cur[k] : b[k]);
   return {
     anthropicApiKey: apply("anthropicApiKey"),
+    openaiApiKey: apply("openaiApiKey"),
+    geminiApiKey: apply("geminiApiKey"),
     githubToken: apply("githubToken"),
     atlassianEmail: b.atlassianEmail !== undefined ? b.atlassianEmail : cur.atlassianEmail,
     atlassianToken: apply("atlassianToken"),

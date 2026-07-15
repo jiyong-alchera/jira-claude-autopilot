@@ -164,6 +164,8 @@ function scriptEnv(id) {
   env.MAX_PARALLEL = String(cfg.maxParallel || 5);
   env.DASHBOARD_URL = `http://localhost:${PORT}`;
   if (cred.anthropicApiKey) env.ANTHROPIC_API_KEY = cred.anthropicApiKey;
+  if (cred.openaiApiKey) env.OPENAI_API_KEY = cred.openaiApiKey;   // codex 엔진
+  if (cred.geminiApiKey) env.GEMINI_API_KEY = cred.geminiApiKey;   // gemini 엔진
   if (cred.githubToken) { env.GH_TOKEN = cred.githubToken; env.GITHUB_TOKEN = cred.githubToken; }
   if (cred.slackWebhookUrl) env.SLACK_WEBHOOK_URL = cred.slackWebhookUrl;
   // 완료 내역을 설명 ADF 에 직접 append(이미지 보존)하기 위한 Jira REST 자격증명 — 단건 즉시 실행 경로에도 주입
@@ -392,6 +394,8 @@ function runClaude(prompt, cred, eng = null, timeoutMs = 120000) {
   return new Promise((resolve, reject) => {
     const env = { ...process.env };
     if (cred && cred.anthropicApiKey) env.ANTHROPIC_API_KEY = cred.anthropicApiKey;
+    if (cred && cred.openaiApiKey) env.OPENAI_API_KEY = cred.openaiApiKey;
+    if (cred && cred.geminiApiKey) env.GEMINI_API_KEY = cred.geminiApiKey;
     let child;
     try { child = spawn(bin, args, { env }); }
     catch (e) { return reject(new Error(`${bin} 실행 실패: ` + e.message)); }
