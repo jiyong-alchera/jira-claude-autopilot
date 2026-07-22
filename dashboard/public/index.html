@@ -398,7 +398,7 @@ function ProjectCard({ proj, onDeleted, flash }) {
     setRefining(false);
     if (r.ok) { setNewCard((p) => ({ ...p, description: r.description })); flash("Claude가 설명을 정리했습니다"); } else flash(r.message || "변환 실패");
   };
-  const pickImages = (fileList) => {
+  const pickFiles = (fileList) => {
     const files = Array.from(fileList || []); if (!files.length) return;
     Promise.all(files.map((f) => new Promise((resolve) => { const rd = new FileReader(); rd.onload = () => resolve({ filename: f.name, contentType: f.type || "application/octet-stream", dataBase64: rd.result }); rd.readAsDataURL(f); })))
       .then((arr) => setNewCard((p) => ({ ...p, attachments: [...p.attachments, ...arr] })));
@@ -698,13 +698,13 @@ function ProjectCard({ proj, onDeleted, flash }) {
             className="w-full h-32 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
         </div>
         <div className="mb-3">
-          <span className="text-sm text-slate-400">이미지 첨부</span>
-          <input type="file" accept="image/*" multiple onChange={(e) => { pickImages(e.target.files); e.target.value = ""; }}
+          <span className="text-sm text-slate-400">파일 첨부</span>
+          <input type="file" multiple onChange={(e) => { pickFiles(e.target.files); e.target.value = ""; }}
             className="mt-1 block w-full text-sm text-slate-300 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-slate-700 file:text-slate-100 hover:file:bg-slate-600 cursor-pointer" />
           {newCard.attachments.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-2">
               {newCard.attachments.map((a, i) => (
-                <span key={i} className="inline-flex items-center gap-1 text-xs bg-slate-700/60 border border-slate-600 rounded-full px-2 py-1">🖼 {a.filename}
+                <span key={i} className="inline-flex items-center gap-1 text-xs bg-slate-700/60 border border-slate-600 rounded-full px-2 py-1">{String(a.contentType || "").startsWith("image/") ? "🖼" : "📎"} {a.filename}
                   <button onClick={() => removeAttachment(i)} className="text-slate-400 hover:text-rose-300 ml-1">✕</button></span>
               ))}
             </div>
